@@ -85,7 +85,8 @@ module picorv32 #(
 	parameter [31:0] LATCHED_IRQ = 32'h ffff_ffff,
 	parameter [31:0] PROGADDR_RESET = 32'h 0000_0000,
 	parameter [31:0] PROGADDR_IRQ = 32'h 0000_0010,
-	parameter [31:0] STACKADDR = 32'h ffff_ffff
+	parameter [31:0] STACKADDR = 32'h ffff_ffff,
+	parameter [ 0:0] ENABLE_MEM_DUALPORT = 1
 ) (
 	input clk, resetn,
 	output reg trap,
@@ -98,6 +99,12 @@ module picorv32 #(
 	output reg [31:0] mem_wdata,
 	output reg [ 3:0] mem_wstrb,
 	input      [31:0] mem_rdata,
+
+	// Second read-only RAM port for instructions
+	output reg 		  instr_valid,
+	output reg 	      instr_ready,
+	output reg [31:0] instr_addr,
+	input      [31:0] instr_rdata,
 
 	// Look-Ahead Interface
 	output            mem_la_read,
