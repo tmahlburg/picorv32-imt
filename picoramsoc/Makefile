@@ -1,7 +1,7 @@
 CROSS=riscv32-unknown-elf-
-FMT_HEX_CMD=fmt_hex.py
+FMT_HEX_CMD=./fmt_hex.py
 CFLAGS=
-	
+
 # ---- BASYS 3 Board ----
 #TODO: automate synthesis and simulation via Makefile
 #hx8ksim: hx8kdemo_tb.vvp hx8kdemo_fw.hex
