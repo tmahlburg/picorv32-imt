@@ -85,6 +85,10 @@ module picoramsoc(
 	wire [31:0] mem_wdata;
 	wire [3:0] mem_wstrb;
 	wire [31:0] mem_rdata;
+	wire instr_valid;
+	reg instr_ready;
+	wire [31:0] instr_addr;
+	wire [31:0] instr_rdata;
 
 	reg ram_ready;
 	wire [31:0] ram_rdata;
@@ -123,12 +127,16 @@ module picoramsoc(
 	    .clk         (clk),
 	    .resetn      (resetn),
 	    .mem_valid   (mem_valid),
+	    .instr_valid (instr_valid),
 	    .mem_instr   (mem_instr),
 	    .mem_ready   (mem_ready),
+	    .instr_valid (instr_valid),
 	    .mem_addr    (mem_addr),
+	    .instr_addr  (instr_addr),
 	    .mem_wdata   (mem_wdata),
 	    .mem_wstrb   (mem_wstrb),
 	    .mem_rdata   (mem_rdata),
+	    .instr_rdata (instr_rdata)
 	    .irq         (irq)
 	);
 
@@ -152,6 +160,7 @@ module picoramsoc(
 
 	always @(posedge clk)
 	    ram_ready <= mem_valid && !mem_ready && mem_addr < 4*MEM_WORDS;
+	    instr_ready <= instr_valid && instr_addr < 4*MEM_WORDS;
 
 
 	`PICORAMSOC_MEM #(
@@ -159,9 +168,11 @@ module picoramsoc(
 	) memory (
 	    .clk(clk),
 	    .wen((mem_valid && !mem_ready && mem_addr < 4*MEM_WORDS) ? mem_wstrb : 4'b0),
-	    .addr(mem_addr[23:2]),
+	    .addr1(mem_addr[23:2]),
+	    .addr2(instr_addr[23:2]),
 	    .wdata(mem_wdata),
-	    .rdata(ram_rdata)
+	    .rdata1(ram_rdata),
+	    .rdata2(instr_rdata)
 	);
 endmodule
 
@@ -191,9 +202,11 @@ module picoramsoc_mem #(
 	) (
 	input clk,
 	input [3:0] wen,
-	input [21:0] addr,
+	input [21:0] addr1,
+	input [21:0] addr2,
 	input [31:0] wdata,
-	output reg [31:0] rdata
+	output reg [31:0] rdata1,
+	output reg [31:0] rdata2
 	);
 	reg [31:0] mem [0:WORDS-1];
 
@@ -201,10 +214,11 @@ module picoramsoc_mem #(
 		$readmemh("firmware.hex", mem);
 	end
 	always @(posedge clk) begin
-	    rdata <= mem[addr];
-	    if (wen[0]) mem[addr][ 7: 0] <= wdata[ 7: 0];
-	    if (wen[1]) mem[addr][15: 8] <= wdata[15: 8];
-	    if (wen[2]) mem[addr][23:16] <= wdata[23:16];
-	    if (wen[3]) mem[addr][31:24] <= wdata[31:24];
+	    rdata1 <= mem[addr1];
+	    if (wen[0]) mem[addr1][ 7: 0] <= wdata[ 7: 0];
+	    if (wen[1]) mem[addr1][15: 8] <= wdata[15: 8];
+	    if (wen[2]) mem[addr1][23:16] <= wdata[23:16];
+	    if (wen[3]) mem[addr1][31:24] <= wdata[31:24];
+		rdata2 <= mem[addr2];
 	end
 endmodule
