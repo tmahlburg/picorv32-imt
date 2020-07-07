@@ -100,18 +100,22 @@ module picorv32 #(
 	output reg [ 3:0] mem_wstrb,
 	input      [31:0] mem_rdata,
 
-	// Second read-only RAM port for instructions
-	output reg 		  instr_valid,
-	output reg 	      instr_ready,
-	output reg [31:0] instr_addr,
-	input      [31:0] instr_rdata,
-
 	// Look-Ahead Interface
 	output            mem_la_read,
 	output            mem_la_write,
 	output     [31:0] mem_la_addr,
 	output reg [31:0] mem_la_wdata,
 	output reg [ 3:0] mem_la_wstrb,
+
+	// Second read-only RAM port for instructions
+	output reg 		  instr_valid,
+	output reg 	      instr_ready,
+	output reg [31:0] instr_addr,
+	input      [31:0] instr_rdata,
+
+	// Look-Ahead Interface for second RAM port -> UNDER CONSIDERATION
+	output            instr_la_read,
+	output     [31:0] instr_la_addr,
 
 	// Pico Co-Processor Interface (PCPI)
 	output reg        pcpi_valid,
@@ -645,6 +649,102 @@ module picorv32 #(
 
 		if (clear_prefetched_high_word)
 			prefetched_high_word <= 0;
+	end
+
+	// instruction memory interface
+	reg [1:0] instr_state;
+	reg [1:0] instr_wordsize;
+	reg [31:0] instr_rdata_word;
+	reg [31:0] instr_rdata_q;
+	reg instr_do_prefetch;
+	reg instr_do_rinst;
+
+	wire instr_xfer;
+
+	wire [31:0] instr_rdata_latched_noshuffle;
+
+	assign instr_xfer = instr_valid && instr_ready;
+
+	wire instr_busy = |{instr_do_prefetch, instr_do_rinst};
+	wire instr_done = resetn && ((instr_xfer && |instr_state && instr_do_rinst) || (&instr_state && instr_do_rinst)) &&
+			instr_xfer;
+
+	assign instr_la_read = resetn && (!instr_state && (instr_do_rinst || instr_do_prefetch));
+	assign instr_la_addr = (instr_do_prefetch || instr_do_rinst) ? {next_pc[31:2], 2'b00} : {reg_op1[31:2], 2'b00};
+
+	assign instr_rdata_latched_noshuffle = (instr_xfer || LATCHED_MEM_RDATA) ? instr_rdata : instr_rdata_q;
+
+	always @* begin
+		(* full_case *)
+		case (instr_wordsize)
+			0: begin
+				instr_rdata_word = instr_rdata;
+			end
+			1: begin
+				case (reg_op1[1])
+					1'b0: instr_rdata_word = {16'b0, instr_rdata[15: 0]};
+					1'b1: instr_rdata_word = {16'b0, instr_rdata[31:16]};
+				endcase
+			end
+			2: begin
+				case (reg_op1[1:0])
+					2'b00: instr_rdata_word = {24'b0, instr_rdata[ 7: 0]};
+					2'b01: instr_rdata_word = {24'b0, instr_rdata[15: 8]};
+					2'b10: instr_rdata_word = {24'b0, instr_rdata[23:16]};
+					2'b11: instr_rdata_word = {24'b0, instr_rdata[31:24]};
+				endcase
+			end
+		endcase
+	end
+
+	always @(posedge clk) begin
+		if (instr_xfer) begin
+			instr_rdata_q <= instr_rdata;
+			next_insn_opcode <= instr_rdata;
+		end
+	end
+
+	always @(posedge clk) begin
+		if (resetn && !trap) begin
+			if (instr_state == 2)
+				`assert(instr_valid || instr_do_prefetch);
+		end
+	end
+
+	always @(posedge clk) begin
+		if (!resetn || trap) begin
+			if (!resetn)
+				instr_state <= 0;
+			if (!resetn || instr_ready)
+				instr_valid <= 0;
+		end else begin
+			if (instr_la_read) begin
+				instr_addr <= instr_la_addr;
+			end
+			case (instr_state)
+				0: begin
+					if (instr_do_prefetch || instr_do_rinst) begin
+						instr_valid <= 1;
+						instr_state <= 1;
+					end
+				end
+				1: begin
+					`assert(instr_do_prefetch || instr_do_rinst);
+					`assert(instr_valid == 1);
+					`assert(instr_instr == (instr_do_prefetch || instr_do_rinst));
+					if (instr_xfer) begin
+						instr_valid <= 0;
+						instr_state <= instr_do_rinst ? 0 : 2;
+					end
+				end
+				2: begin
+					`assert(instr_do_prefetch);
+					if (instr_do_rinst) begin
+						instr_state <= 0;
+					end
+				end
+			endcase
+		end
 	end
 
 
@@ -1401,6 +1501,7 @@ module picorv32 #(
 
 	assign launch_next_insn = cpu_state == cpu_state_fetch && decoder_trigger && (!ENABLE_IRQ || irq_delay || irq_active || !(irq_pending & ~irq_mask));
 
+	/* MAIN CPU LOOP */
 	always @(posedge clk) begin
 		trap <= 0;
 		reg_sh <= 'bx;
@@ -1484,6 +1585,7 @@ module picorv32 #(
 			end
 			cpu_state <= cpu_state_fetch;
 		end else
+		/* MAIN CPU STATE MACHINE */
 		(* parallel_case, full_case *)
 		case (cpu_state)
 			cpu_state_trap: begin
