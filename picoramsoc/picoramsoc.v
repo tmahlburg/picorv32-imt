@@ -85,13 +85,16 @@ module picoramsoc(
 	wire [31:0] mem_wdata;
 	wire [3:0] mem_wstrb;
 	wire [31:0] mem_rdata;
+
 	wire instr_valid;
-	reg instr_ready;
+	wire instr_ready;
 	wire [31:0] instr_addr;
 	wire [31:0] instr_rdata;
 
 	reg ram_ready;
 	wire [31:0] ram_rdata;
+
+	reg instr_ram_ready;
 
 	assign iomem_valid = mem_valid && (mem_addr[31:24] > 8'h 01);
 	assign iomem_wstrb = mem_wstrb;
@@ -104,6 +107,8 @@ module picoramsoc(
 	wire        simpleuart_reg_dat_sel = mem_valid && (mem_addr == 32'h 0200_0008);
 	wire [31:0] simpleuart_reg_dat_do;
 	wire        simpleuart_reg_dat_wait;
+
+	assign instr_ready = instr_ram_ready;
 
 	assign mem_ready = (iomem_valid && iomem_ready) || ram_ready ||
 	        simpleuart_reg_div_sel || (simpleuart_reg_dat_sel && !simpleuart_reg_dat_wait);
@@ -130,13 +135,13 @@ module picoramsoc(
 	    .instr_valid (instr_valid),
 	    .mem_instr   (mem_instr),
 	    .mem_ready   (mem_ready),
-	    .instr_valid (instr_valid),
+	    .instr_ready (instr_ready),
 	    .mem_addr    (mem_addr),
 	    .instr_addr  (instr_addr),
 	    .mem_wdata   (mem_wdata),
 	    .mem_wstrb   (mem_wstrb),
 	    .mem_rdata   (mem_rdata),
-	    .instr_rdata (instr_rdata)
+	    .instr_rdata (instr_rdata),
 	    .irq         (irq)
 	);
 
@@ -158,10 +163,10 @@ module picoramsoc(
 	    .reg_dat_wait(simpleuart_reg_dat_wait)
 	);
 
-	always @(posedge clk)
+	always @(posedge clk) begin
 	    ram_ready <= mem_valid && !mem_ready && mem_addr < 4*MEM_WORDS;
-	    instr_ready <= instr_valid && instr_addr < 4*MEM_WORDS;
-
+	    instr_ram_ready <= instr_valid && instr_addr < 4*MEM_WORDS;
+	end
 
 	`PICORAMSOC_MEM #(
 	    .WORDS(MEM_WORDS)
