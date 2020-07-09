@@ -705,7 +705,7 @@ module picorv32 #(
 
 	always @(posedge clk) begin
 		if (resetn && !trap) begin
-			if (instr_state == 2)
+			if (instr_state == 3)
 				`assert(instr_valid || instr_do_prefetch);
 		end
 	end
@@ -723,6 +723,7 @@ module picorv32 #(
 			case (instr_state)
 				0: begin
 					if (instr_do_prefetch || instr_do_rinst) begin
+						mem_instr <= instr_do_prefetch || instr_do_rinst;
 						instr_valid <= 1;
 						instr_state <= 1;
 					end
@@ -730,13 +731,13 @@ module picorv32 #(
 				1: begin
 					`assert(instr_do_prefetch || instr_do_rinst);
 					`assert(instr_valid == 1);
-					`assert(instr_instr == (instr_do_prefetch || instr_do_rinst));
+					`assert(mem_instr == (instr_do_prefetch || instr_do_rinst));
 					if (instr_xfer) begin
 						instr_valid <= 0;
-						instr_state <= instr_do_rinst ? 0 : 2;
+						instr_state <= instr_do_rinst ? 0 : 3;
 					end
 				end
-				2: begin
+				3: begin
 					`assert(instr_do_prefetch);
 					if (instr_do_rinst) begin
 						instr_state <= 0;
