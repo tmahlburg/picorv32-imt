@@ -1820,7 +1820,7 @@ module picorv32 #(
 			cpu_state_stmem: begin
 				if (ENABLE_TRACE)
 					reg_out <= reg_op2;
-				if (!mem_do_prefetch || mem_done) begin
+				if (mem_done) begin
 					if (!mem_do_wdata) begin
 						(* parallel_case, full_case *)
 						case (1'b1)
@@ -1835,7 +1835,7 @@ module picorv32 #(
 						reg_op1 <= reg_op1 + decoded_imm;
 						set_mem_do_wdata = 1;
 					end
-					if (!mem_do_prefetch && mem_done) begin
+					if (mem_done) begin
 						cpu_state <= cpu_state_fetch;
 						decoder_trigger <= 1;
 						decoder_pseudo_trigger <= 1;
@@ -1845,7 +1845,7 @@ module picorv32 #(
 
 			cpu_state_ldmem: begin
 				latched_store <= 1;
-				if (!mem_do_prefetch || mem_done) begin
+				if (mem_done) begin
 					if (!mem_do_rdata) begin
 						(* parallel_case, full_case *)
 						case (1'b1)
@@ -1863,7 +1863,7 @@ module picorv32 #(
 						reg_op1 <= reg_op1 + decoded_imm;
 						set_mem_do_rdata = 1;
 					end
-					if (!mem_do_prefetch && mem_done) begin
+					if (mem_done) begin
 						(* parallel_case, full_case *)
 						case (1'b1)
 							latched_is_lu: reg_out <= mem_rdata_word;
@@ -1913,7 +1913,6 @@ module picorv32 #(
 		end
 
 		if (!resetn || mem_done || instr_done) begin
-			mem_do_prefetch <= 0;
 			instr_do_prefetch <= 0;
 			instr_do_rinst <= 0;
 			mem_do_rdata <= 0;
