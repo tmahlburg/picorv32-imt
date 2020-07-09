@@ -363,15 +363,11 @@ module picorv32 #(
 	reg [1:0] mem_wordsize;
 	reg [31:0] mem_rdata_word;
 	reg [31:0] mem_rdata_q;
-	reg mem_do_prefetch;
-	reg mem_do_rinst;
 	reg mem_do_rdata;
 	reg mem_do_wdata;
 
 	wire mem_xfer;
-	reg mem_la_secondword, mem_la_firstword_reg, last_mem_valid;
-	wire mem_la_firstword = COMPRESSED_ISA && (mem_do_prefetch || mem_do_rinst) && next_pc[1] && !mem_la_secondword;
-	wire mem_la_firstword_xfer = COMPRESSED_ISA && mem_xfer && (!last_mem_valid ? mem_la_firstword : mem_la_firstword_reg);
+	reg mem_la_secondword;
 
 	reg prefetched_high_word;
 	reg clear_prefetched_high_word;
@@ -380,34 +376,19 @@ module picorv32 #(
 	wire [31:0] mem_rdata_latched_noshuffle;
 	wire [31:0] mem_rdata_latched;
 
-	wire mem_la_use_prefetched_high_word = COMPRESSED_ISA && mem_la_firstword && prefetched_high_word && !clear_prefetched_high_word;
-	assign mem_xfer = (mem_valid && mem_ready) || (mem_la_use_prefetched_high_word && mem_do_rinst);
+	assign mem_xfer = mem_valid && mem_ready;
 
-	wire mem_busy = |{mem_do_prefetch, mem_do_rinst, mem_do_rdata, mem_do_wdata};
-	wire mem_done = resetn && ((mem_xfer && |mem_state && (mem_do_rinst || mem_do_rdata || mem_do_wdata)) || (&mem_state && mem_do_rinst)) &&
-			(!mem_la_firstword || (~&mem_rdata_latched[1:0] && mem_xfer));
+	wire mem_busy = |{mem_do_rdata, mem_do_wdata};
+	wire mem_done = resetn && (mem_xfer && |mem_state && (mem_do_rdata || mem_do_wdata))
 
 	assign mem_la_write = resetn && !mem_state && mem_do_wdata;
-	assign mem_la_read = resetn && ((!mem_la_use_prefetched_high_word && !mem_state && (mem_do_rinst || mem_do_prefetch || mem_do_rdata)) ||
-			(COMPRESSED_ISA && mem_xfer && (!last_mem_valid ? mem_la_firstword : mem_la_firstword_reg) && !mem_la_secondword && &mem_rdata_latched[1:0]));
-	assign mem_la_addr = (mem_do_prefetch || mem_do_rinst) ? {next_pc[31:2] + mem_la_firstword_xfer, 2'b00} : {reg_op1[31:2], 2'b00};
+	assign mem_la_read = resetn && (!mem_state && mem_do_rdata);
+	assign mem_la_addr = {reg_op1[31:2], 2'b00};
 
 	assign mem_rdata_latched_noshuffle = (mem_xfer || LATCHED_MEM_RDATA) ? mem_rdata : mem_rdata_q;
 
-	assign mem_rdata_latched = COMPRESSED_ISA && mem_la_use_prefetched_high_word ? {16'bx, mem_16bit_buffer} :
-			COMPRESSED_ISA && mem_la_secondword ? {mem_rdata_latched_noshuffle[15:0], mem_16bit_buffer} :
-			COMPRESSED_ISA && mem_la_firstword ? {16'bx, mem_rdata_latched_noshuffle[31:16]} : mem_rdata_latched_noshuffle;
-
-	always @(posedge clk) begin
-		if (!resetn) begin
-			mem_la_firstword_reg <= 0;
-			last_mem_valid <= 0;
-		end else begin
-			if (!last_mem_valid)
-				mem_la_firstword_reg <= mem_la_firstword;
-			last_mem_valid <= mem_valid && !mem_ready;
-		end
-	end
+	assign mem_rdata_latched = COMPRESSED_ISA && mem_la_secondword ? {mem_rdata_latched_noshuffle[15:0], mem_16bit_buffer} :
+			mem_rdata_latched_noshuffle;
 
 	always @* begin
 		(* full_case *)
@@ -443,133 +424,18 @@ module picorv32 #(
 			mem_rdata_q <= COMPRESSED_ISA ? mem_rdata_latched : mem_rdata;
 			next_insn_opcode <= COMPRESSED_ISA ? mem_rdata_latched : mem_rdata;
 		end
-
-		if (COMPRESSED_ISA && mem_done && (mem_do_prefetch || mem_do_rinst)) begin
-			case (mem_rdata_latched[1:0])
-				2'b00: begin // Quadrant 0
-					case (mem_rdata_latched[15:13])
-						3'b000: begin // C.ADDI4SPN
-							mem_rdata_q[14:12] <= 3'b000;
-							mem_rdata_q[31:20] <= {2'b0, mem_rdata_latched[10:7], mem_rdata_latched[12:11], mem_rdata_latched[5], mem_rdata_latched[6], 2'b00};
-						end
-						3'b010: begin // C.LW
-							mem_rdata_q[31:20] <= {5'b0, mem_rdata_latched[5], mem_rdata_latched[12:10], mem_rdata_latched[6], 2'b00};
-							mem_rdata_q[14:12] <= 3'b 010;
-						end
-						3'b 110: begin // C.SW
-							{mem_rdata_q[31:25], mem_rdata_q[11:7]} <= {5'b0, mem_rdata_latched[5], mem_rdata_latched[12:10], mem_rdata_latched[6], 2'b00};
-							mem_rdata_q[14:12] <= 3'b 010;
-						end
-					endcase
-				end
-				2'b01: begin // Quadrant 1
-					case (mem_rdata_latched[15:13])
-						3'b 000: begin // C.ADDI
-							mem_rdata_q[14:12] <= 3'b000;
-							mem_rdata_q[31:20] <= $signed({mem_rdata_latched[12], mem_rdata_latched[6:2]});
-						end
-						3'b 010: begin // C.LI
-							mem_rdata_q[14:12] <= 3'b000;
-							mem_rdata_q[31:20] <= $signed({mem_rdata_latched[12], mem_rdata_latched[6:2]});
-						end
-						3'b 011: begin
-							if (mem_rdata_latched[11:7] == 2) begin // C.ADDI16SP
-								mem_rdata_q[14:12] <= 3'b000;
-								mem_rdata_q[31:20] <= $signed({mem_rdata_latched[12], mem_rdata_latched[4:3],
-										mem_rdata_latched[5], mem_rdata_latched[2], mem_rdata_latched[6], 4'b 0000});
-							end else begin // C.LUI
-								mem_rdata_q[31:12] <= $signed({mem_rdata_latched[12], mem_rdata_latched[6:2]});
-							end
-						end
-						3'b100: begin
-							if (mem_rdata_latched[11:10] == 2'b00) begin // C.SRLI
-								mem_rdata_q[31:25] <= 7'b0000000;
-								mem_rdata_q[14:12] <= 3'b 101;
-							end
-							if (mem_rdata_latched[11:10] == 2'b01) begin // C.SRAI
-								mem_rdata_q[31:25] <= 7'b0100000;
-								mem_rdata_q[14:12] <= 3'b 101;
-							end
-							if (mem_rdata_latched[11:10] == 2'b10) begin // C.ANDI
-								mem_rdata_q[14:12] <= 3'b111;
-								mem_rdata_q[31:20] <= $signed({mem_rdata_latched[12], mem_rdata_latched[6:2]});
-							end
-							if (mem_rdata_latched[12:10] == 3'b011) begin // C.SUB, C.XOR, C.OR, C.AND
-								if (mem_rdata_latched[6:5] == 2'b00) mem_rdata_q[14:12] <= 3'b000;
-								if (mem_rdata_latched[6:5] == 2'b01) mem_rdata_q[14:12] <= 3'b100;
-								if (mem_rdata_latched[6:5] == 2'b10) mem_rdata_q[14:12] <= 3'b110;
-								if (mem_rdata_latched[6:5] == 2'b11) mem_rdata_q[14:12] <= 3'b111;
-								mem_rdata_q[31:25] <= mem_rdata_latched[6:5] == 2'b00 ? 7'b0100000 : 7'b0000000;
-							end
-						end
-						3'b 110: begin // C.BEQZ
-							mem_rdata_q[14:12] <= 3'b000;
-							{ mem_rdata_q[31], mem_rdata_q[7], mem_rdata_q[30:25], mem_rdata_q[11:8] } <=
-									$signed({mem_rdata_latched[12], mem_rdata_latched[6:5], mem_rdata_latched[2],
-											mem_rdata_latched[11:10], mem_rdata_latched[4:3]});
-						end
-						3'b 111: begin // C.BNEZ
-							mem_rdata_q[14:12] <= 3'b001;
-							{ mem_rdata_q[31], mem_rdata_q[7], mem_rdata_q[30:25], mem_rdata_q[11:8] } <=
-									$signed({mem_rdata_latched[12], mem_rdata_latched[6:5], mem_rdata_latched[2],
-											mem_rdata_latched[11:10], mem_rdata_latched[4:3]});
-						end
-					endcase
-				end
-				2'b10: begin // Quadrant 2
-					case (mem_rdata_latched[15:13])
-						3'b000: begin // C.SLLI
-							mem_rdata_q[31:25] <= 7'b0000000;
-							mem_rdata_q[14:12] <= 3'b 001;
-						end
-						3'b010: begin // C.LWSP
-							mem_rdata_q[31:20] <= {4'b0, mem_rdata_latched[3:2], mem_rdata_latched[12], mem_rdata_latched[6:4], 2'b00};
-							mem_rdata_q[14:12] <= 3'b 010;
-						end
-						3'b100: begin
-							if (mem_rdata_latched[12] == 0 && mem_rdata_latched[6:2] == 0) begin // C.JR
-								mem_rdata_q[14:12] <= 3'b000;
-								mem_rdata_q[31:20] <= 12'b0;
-							end
-							if (mem_rdata_latched[12] == 0 && mem_rdata_latched[6:2] != 0) begin // C.MV
-								mem_rdata_q[14:12] <= 3'b000;
-								mem_rdata_q[31:25] <= 7'b0000000;
-							end
-							if (mem_rdata_latched[12] != 0 && mem_rdata_latched[11:7] != 0 && mem_rdata_latched[6:2] == 0) begin // C.JALR
-								mem_rdata_q[14:12] <= 3'b000;
-								mem_rdata_q[31:20] <= 12'b0;
-							end
-							if (mem_rdata_latched[12] != 0 && mem_rdata_latched[6:2] != 0) begin // C.ADD
-								mem_rdata_q[14:12] <= 3'b000;
-								mem_rdata_q[31:25] <= 7'b0000000;
-							end
-						end
-						3'b110: begin // C.SWSP
-							{mem_rdata_q[31:25], mem_rdata_q[11:7]} <= {4'b0, mem_rdata_latched[8:7], mem_rdata_latched[12:9], 2'b00};
-							mem_rdata_q[14:12] <= 3'b 010;
-						end
-					endcase
-				end
-			endcase
-		end
 	end
 
 	always @(posedge clk) begin
 		if (resetn && !trap) begin
-			if (mem_do_prefetch || mem_do_rinst || mem_do_rdata)
+			if (mem_do_rdata)
 				`assert(!mem_do_wdata);
 
-			if (mem_do_prefetch || mem_do_rinst)
+			if (mem_do_wdata)
 				`assert(!mem_do_rdata);
 
-			if (mem_do_rdata)
-				`assert(!mem_do_prefetch && !mem_do_rinst);
-
-			if (mem_do_wdata)
-				`assert(!(mem_do_prefetch || mem_do_rinst || mem_do_rdata));
-
-			if (mem_state == 2 || mem_state == 3)
-				`assert(mem_valid || mem_do_prefetch);
+			if (mem_state == 2)
+				`assert(mem_valid);
 		end
 	end
 
@@ -591,9 +457,8 @@ module picorv32 #(
 			end
 			case (mem_state)
 				0: begin
-					if (mem_do_prefetch || mem_do_rinst || mem_do_rdata) begin
-						mem_valid <= !mem_la_use_prefetched_high_word;
-						mem_instr <= mem_do_prefetch || mem_do_rinst;
+					if (mem_do_rdata) begin
+						mem_valid <= 1;
 						mem_wstrb <= 0;
 						mem_state <= 1;
 					end
@@ -605,15 +470,13 @@ module picorv32 #(
 				end
 				1: begin
 					`assert(mem_wstrb == 0);
-					`assert(mem_do_prefetch || mem_do_rinst || mem_do_rdata);
-					`assert(mem_valid == !mem_la_use_prefetched_high_word);
-					`assert(mem_instr == (mem_do_prefetch || mem_do_rinst));
+					`assert(mem_do_rdata);
+					`assert(mem_valid);
 					if (mem_xfer) begin
 						if (COMPRESSED_ISA && mem_la_read) begin
 							mem_valid <= 1;
 							mem_la_secondword <= 1;
-							if (!mem_la_use_prefetched_high_word)
-								mem_16bit_buffer <= mem_rdata[31:16];
+							mem_16bit_buffer <= mem_rdata[31:16];
 						end else begin
 							mem_valid <= 0;
 							mem_la_secondword <= 0;
@@ -625,7 +488,7 @@ module picorv32 #(
 									prefetched_high_word <= 0;
 								end
 							end
-							mem_state <= mem_do_rinst || mem_do_rdata ? 0 : 3;
+							mem_state <= 0;
 						end
 					end
 				end
@@ -634,13 +497,6 @@ module picorv32 #(
 					`assert(mem_do_wdata);
 					if (mem_xfer) begin
 						mem_valid <= 0;
-						mem_state <= 0;
-					end
-				end
-				3: begin
-					`assert(mem_wstrb == 0);
-					`assert(mem_do_prefetch);
-					if (mem_do_rinst) begin
 						mem_state <= 0;
 					end
 				end
