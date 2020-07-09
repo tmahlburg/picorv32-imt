@@ -109,7 +109,7 @@ module picorv32 #(
 
 	// Second read-only RAM port for instructions
 	output reg 		  instr_valid,
-	output reg 	      instr_ready,
+	input 	      	  instr_ready,
 	output reg [31:0] instr_addr,
 	input      [31:0] instr_rdata,
 
