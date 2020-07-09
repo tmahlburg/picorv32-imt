@@ -379,7 +379,7 @@ module picorv32 #(
 	assign mem_xfer = mem_valid && mem_ready;
 
 	wire mem_busy = |{mem_do_rdata, mem_do_wdata};
-	wire mem_done = resetn && (mem_xfer && |mem_state && (mem_do_rdata || mem_do_wdata))
+	wire mem_done = resetn && (mem_xfer && |mem_state && (mem_do_rdata || mem_do_wdata));
 
 	assign mem_la_write = resetn && !mem_state && mem_do_wdata;
 	assign mem_la_read = resetn && (!mem_state && mem_do_rdata);
