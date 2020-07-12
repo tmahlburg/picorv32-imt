@@ -1904,13 +1904,15 @@ module picorv32 #(
 			cpu_state <= cpu_state_trap;
 		end
 
-		if (!resetn || mem_done || instr_done) begin
-			instr_do_prefetch <= 0;
-			instr_do_rinst <= 0;
+		if (!resetn || mem_done) begin
 			mem_do_rdata <= 0;
 			mem_do_wdata <= 0;
 		end
 
+		if (!resetn || instr_done) begin
+			instr_do_prefetch <= 0;
+			instr_do_rinst <= 0;
+		end
 		if (set_instr_do_rinst)
 			instr_do_rinst <= 1;
 		if (set_mem_do_rdata)
