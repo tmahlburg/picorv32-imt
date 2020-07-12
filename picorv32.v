@@ -1820,61 +1820,53 @@ module picorv32 #(
 			cpu_state_stmem: begin
 				if (ENABLE_TRACE)
 					reg_out <= reg_op2;
-				if (mem_done) begin
-					if (!mem_do_wdata) begin
-						(* parallel_case, full_case *)
-						case (1'b1)
-							instr_sb: mem_wordsize <= 2;
-							instr_sh: mem_wordsize <= 1;
-							instr_sw: mem_wordsize <= 0;
-						endcase
-						if (ENABLE_TRACE) begin
-							trace_valid <= 1;
-							trace_data <= (irq_active ? TRACE_IRQ : 0) | TRACE_ADDR | ((reg_op1 + decoded_imm) & 32'hffffffff);
-						end
-						reg_op1 <= reg_op1 + decoded_imm;
-						set_mem_do_wdata = 1;
+				if (!mem_do_wdata) begin
+					(* parallel_case, full_case *)
+					case (1'b1)
+						instr_sb: mem_wordsize <= 2;
+						instr_sh: mem_wordsize <= 1;
+						instr_sw: mem_wordsize <= 0;
+					endcase
+					if (ENABLE_TRACE) begin
+						trace_valid <= 1;
+						trace_data <= (irq_active ? TRACE_IRQ : 0) | TRACE_ADDR | ((reg_op1 + decoded_imm) & 32'hffffffff);
 					end
-					if (mem_done) begin
-						cpu_state <= cpu_state_fetch;
-						decoder_trigger <= 1;
-						decoder_pseudo_trigger <= 1;
-					end
+					reg_op1 <= reg_op1 + decoded_imm;
+					set_mem_do_wdata = 1;
 				end
+				cpu_state <= cpu_state_fetch;
+				decoder_trigger <= 1;
+				decoder_pseudo_trigger <= 1;
 			end
 
 			cpu_state_ldmem: begin
 				latched_store <= 1;
-				if (mem_done) begin
-					if (!mem_do_rdata) begin
-						(* parallel_case, full_case *)
-						case (1'b1)
-							instr_lb || instr_lbu: mem_wordsize <= 2;
-							instr_lh || instr_lhu: mem_wordsize <= 1;
-							instr_lw: mem_wordsize <= 0;
-						endcase
-						latched_is_lu <= is_lbu_lhu_lw;
-						latched_is_lh <= instr_lh;
-						latched_is_lb <= instr_lb;
-						if (ENABLE_TRACE) begin
-							trace_valid <= 1;
-							trace_data <= (irq_active ? TRACE_IRQ : 0) | TRACE_ADDR | ((reg_op1 + decoded_imm) & 32'hffffffff);
-						end
-						reg_op1 <= reg_op1 + decoded_imm;
-						set_mem_do_rdata = 1;
+				if (!mem_do_rdata) begin
+					(* parallel_case, full_case *)
+					case (1'b1)
+						instr_lb || instr_lbu: mem_wordsize <= 2;
+						instr_lh || instr_lhu: mem_wordsize <= 1;
+						instr_lw: mem_wordsize <= 0;
+					endcase
+					latched_is_lu <= is_lbu_lhu_lw;
+					latched_is_lh <= instr_lh;
+					latched_is_lb <= instr_lb;
+					if (ENABLE_TRACE) begin
+						trace_valid <= 1;
+						trace_data <= (irq_active ? TRACE_IRQ : 0) | TRACE_ADDR | ((reg_op1 + decoded_imm) & 32'hffffffff);
 					end
-					if (mem_done) begin
-						(* parallel_case, full_case *)
-						case (1'b1)
-							latched_is_lu: reg_out <= mem_rdata_word;
-							latched_is_lh: reg_out <= $signed(mem_rdata_word[15:0]);
-							latched_is_lb: reg_out <= $signed(mem_rdata_word[7:0]);
-						endcase
-						decoder_trigger <= 1;
-						decoder_pseudo_trigger <= 1;
-						cpu_state <= cpu_state_fetch;
-					end
+					reg_op1 <= reg_op1 + decoded_imm;
+					set_mem_do_rdata = 1;
 				end
+				(* parallel_case, full_case *)
+				case (1'b1)
+					latched_is_lu: reg_out <= mem_rdata_word;
+					latched_is_lh: reg_out <= $signed(mem_rdata_word[15:0]);
+					latched_is_lb: reg_out <= $signed(mem_rdata_word[7:0]);
+				endcase
+				decoder_trigger <= 1;
+				decoder_pseudo_trigger <= 1;
+				cpu_state <= cpu_state_fetch;
 			end
 		endcase
 
