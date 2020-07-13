@@ -86,6 +86,7 @@ module picorv32 #(
 	parameter [31:0] PROGADDR_RESET = 32'h 0000_0000,
 	parameter [31:0] PROGADDR_IRQ = 32'h 0000_0010,
 	parameter [31:0] STACKADDR = 32'h ffff_ffff,
+	// NOT USED ATM
 	parameter [ 0:0] ENABLE_MEM_DUALPORT = 1
 ) (
 	input clk, resetn,
@@ -1187,6 +1188,7 @@ module picorv32 #(
 	reg [31:0] alu_shl, alu_shr;
 	reg alu_eq, alu_ltu, alu_lts;
 
+	/* ALU */
 	generate if (TWO_CYCLE_ALU) begin
 		always @(posedge clk) begin
 			alu_add_sub <= instr_sub ? reg_op1 - reg_op2 : reg_op1 + reg_op2;
@@ -1249,6 +1251,7 @@ module picorv32 #(
 		alu_out = $anyseq;
 `endif
 	end
+	/* END ALU */
 
 	reg clear_prefetched_high_word_q;
 	always @(posedge clk) clear_prefetched_high_word_q <= clear_prefetched_high_word;
@@ -1261,6 +1264,7 @@ module picorv32 #(
 			clear_prefetched_high_word = COMPRESSED_ISA;
 	end
 
+	/* WRITE TO REG */
 	reg cpuregs_write;
 	reg [31:0] cpuregs_wrdata;
 	reg [31:0] cpuregs_rs1;
@@ -1293,6 +1297,7 @@ module picorv32 #(
 			endcase
 		end
 	end
+	/* END WRITE TO REG */
 
 `ifndef PICORV32_REGS
 	always @(posedge clk) begin
@@ -1918,6 +1923,7 @@ module picorv32 #(
 			instr_do_prefetch <= 0;
 			instr_do_rinst <= 0;
 		end
+
 		if (set_instr_do_rinst)
 			instr_do_rinst <= 1;
 		if (set_mem_do_rdata)
