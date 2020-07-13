@@ -525,7 +525,7 @@ module picorv32 #(
 	wire instr_done = resetn && ((instr_xfer && |instr_state && instr_do_rinst) || (&instr_state && instr_do_rinst));
 
 	assign instr_la_read = resetn && (!instr_state && (instr_do_rinst || instr_do_prefetch));
-	assign instr_la_addr = (instr_do_prefetch || instr_do_rinst) ? {next_pc[31:2], 2'b00} : {reg_op1[31:2], 2'b00};
+	assign instr_la_addr = {next_pc[31:2], 2'b00};
 
 	assign instr_rdata_latched = (instr_xfer || LATCHED_MEM_RDATA) ? instr_rdata : instr_rdata_q;
 
