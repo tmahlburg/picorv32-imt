@@ -1835,9 +1835,11 @@ module picorv32 #(
 					reg_op1 <= reg_op1 + decoded_imm;
 					set_mem_do_wdata = 1;
 				end
-				cpu_state <= cpu_state_fetch;
-				decoder_trigger <= 1;
-				decoder_pseudo_trigger <= 1;
+				if (mem_done) begin
+					cpu_state <= cpu_state_fetch;
+					decoder_trigger <= 1;
+					decoder_pseudo_trigger <= 1;
+				end
 			end
 
 			cpu_state_ldmem: begin
@@ -1865,9 +1867,11 @@ module picorv32 #(
 					latched_is_lh: reg_out <= $signed(mem_rdata_word[15:0]);
 					latched_is_lb: reg_out <= $signed(mem_rdata_word[7:0]);
 				endcase
-				decoder_trigger <= 1;
-				decoder_pseudo_trigger <= 1;
-				cpu_state <= cpu_state_fetch;
+				if (mem_done) begin
+					decoder_trigger <= 1;
+					decoder_pseudo_trigger <= 1;
+					cpu_state <= cpu_state_fetch;
+				end
 			end
 		endcase
 
