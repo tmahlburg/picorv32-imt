@@ -817,12 +817,7 @@ module picorv32 #(
 `endif
 
 	always @(posedge clk) begin
-		is_lui_auipc_jal <= |{instr_lui, instr_auipc, instr_jal};
-		is_lui_auipc_jal_jalr_addi_add_sub <= |{instr_lui, instr_auipc, instr_jal, instr_jalr, instr_addi, instr_add, instr_sub};
-		is_slti_blt_slt <= |{instr_slti, instr_blt, instr_slt};
-		is_sltiu_bltu_sltu <= |{instr_sltiu, instr_bltu, instr_sltu};
 		is_lbu_lhu_lw <= |{instr_lbu, instr_lhu, instr_lw};
-		is_compare <= |{is_beq_bne_blt_bge_bltu_bgeu, instr_slti, instr_slt, instr_sltiu, instr_sltu};
 
 		if (instr_do_rinst && instr_done) begin
 			instr_lui     <= instr_rdata_latched[6:0] == 7'b0110111;
@@ -1124,6 +1119,12 @@ module picorv32 #(
 			instr_or    <= 0;
 			instr_and   <= 0;
 		end
+
+		is_lui_auipc_jal <= |{instr_lui, instr_auipc, instr_jal};
+		is_lui_auipc_jal_jalr_addi_add_sub <= |{instr_lui, instr_auipc, instr_jal, instr_jalr, instr_addi, instr_add, instr_sub};
+		is_slti_blt_slt <= |{instr_slti, instr_blt, instr_slt};
+		is_sltiu_bltu_sltu <= |{instr_sltiu, instr_bltu, instr_sltu};
+		is_compare <= |{is_beq_bne_blt_bge_bltu_bgeu, instr_slti, instr_slt, instr_sltiu, instr_sltu};
 	end
 
 
