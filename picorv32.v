@@ -47,6 +47,7 @@
   `define assert(assert_expr) empty_statement
 `endif
 
+// TO BE REVIEWED
 // uncomment this for register file in extra module
 // `define PICORV32_REGS picorv32_regs
 
@@ -87,7 +88,8 @@ module picorv32 #(
 	parameter [31:0] PROGADDR_IRQ = 32'h 0000_0010,
 	parameter [31:0] STACKADDR = 32'h ffff_ffff,
 	// NOT USED ATM
-	parameter [ 0:0] ENABLE_MEM_DUALPORT = 1
+	parameter [ 0:0] ENABLE_MEM_DUALPORT = 1,
+	parameter [ 2:0] THREADS = 5
 ) (
 	input clk, resetn,
 	output reg trap,
@@ -211,9 +213,11 @@ module picorv32 #(
 	reg [31:0] irq_pending;
 	reg [31:0] timer;
 
+	/* THREAD CONTROL */
+	reg [2:0] active_hart = 0;
+
 `ifndef PICORV32_REGS
 	reg [31:0] cpuregs [0:regfile_size-1];
-
 	integer i;
 	initial begin
 		if (REGS_INIT_ZERO) begin
@@ -1265,40 +1269,42 @@ module picorv32 #(
 	end
 
 	/* WRITE TO REG */
-	reg cpuregs_write;
-	reg [31:0] cpuregs_wrdata;
+	reg cpuregs_write [0:THREADS-1];
+	reg [31:0] cpuregs_wrdata [0:THREADS-1];
+
 	reg [31:0] cpuregs_rs1;
 	reg [31:0] cpuregs_rs2;
 	reg [regindex_bits-1:0] decoded_rs;
 
 	always @* begin
-		cpuregs_write = 0;
-		cpuregs_wrdata = 'bx;
+		cpuregs_write[active_hart] = 0;
+		cpuregs_wrdata[active_hart] = 'bx;
 
 		if (cpu_state == cpu_state_fetch) begin
 			(* parallel_case *)
 			case (1'b1)
 				latched_branch: begin
-					cpuregs_wrdata = reg_pc + (latched_compr ? 2 : 4);
-					cpuregs_write = 1;
+					cpuregs_wrdata[active_hart] = reg_pc + (latched_compr ? 2 : 4);
+					cpuregs_write[active_hart] = 1;
 				end
 				latched_store && !latched_branch: begin
-					cpuregs_wrdata = latched_stalu ? alu_out_q : reg_out;
-					cpuregs_write = 1;
+					cpuregs_wrdata[active_hart] = latched_stalu ? alu_out_q : reg_out;
+					cpuregs_write[active_hart] = 1;
 				end
 				ENABLE_IRQ && irq_state[0]: begin
-					cpuregs_wrdata = reg_next_pc | latched_compr;
-					cpuregs_write = 1;
+					cpuregs_wrdata[active_hart] = reg_next_pc | latched_compr;
+					cpuregs_write[active_hart] = 1;
 				end
 				ENABLE_IRQ && irq_state[1]: begin
-					cpuregs_wrdata = irq_pending & ~irq_mask;
-					cpuregs_write = 1;
+					cpuregs_wrdata[active_hart] = irq_pending & ~irq_mask;
+					cpuregs_write[active_hart] = 1;
 				end
 			endcase
 		end
 	end
 	/* END WRITE TO REG */
 
+/* USED WITH INTERNAL REG */
 `ifndef PICORV32_REGS
 	always @(posedge clk) begin
 		if (resetn && cpuregs_write && latched_rd)
@@ -1332,32 +1338,45 @@ module picorv32 #(
 		end
 	end
 `else
-	wire[31:0] cpuregs_rdata1;
-	wire[31:0] cpuregs_rdata2;
+/* INSTANTIATE EXTERNAL REG */
+	wire [31:0] cpuregs_rdata1 [0:THREADS];
+	wire [31:0] cpuregs_rdata2 [0:THREADS];
 
-	wire [5:0] cpuregs_waddr = latched_rd;
-	wire [5:0] cpuregs_raddr1 = ENABLE_REGS_DUALPORT ? decoded_rs1 : decoded_rs;
-	wire [5:0] cpuregs_raddr2 = ENABLE_REGS_DUALPORT ? decoded_rs2 : 0;
+	//wire [5:0] cpuregs_waddr = latched_rd;
+	wire [5:0] cpuregs_waddr [0:THREADS];
+	//wire [5:0] cpuregs_raddr1 = ENABLE_REGS_DUALPORT ? decoded_rs1 : decoded_rs;
+	wire [5:0] cpuregs_raddr1 [0:THREADS];
+	//wire [5:0] cpuregs_raddr2 = ENABLE_REGS_DUALPORT ? decoded_rs2 : 0;
+	wire [5:0] cpuregs_raddr2 [0:THREADS];
 
-	`PICORV32_REGS cpuregs (
-		.clk(clk),
-		.wen(resetn && cpuregs_write && latched_rd),
-		.waddr(cpuregs_waddr),
-		.raddr1(cpuregs_raddr1),
-		.raddr2(cpuregs_raddr2),
-		.wdata(cpuregs_wrdata),
-		.rdata1(cpuregs_rdata1),
-		.rdata2(cpuregs_rdata2)
-	);
+
+	genvar i;
+	generate
+		for (i = 0; i < THREADS; i = i + 1) begin : cpuregs
+			`PICORV32_REGS cpuregs (
+				.clk(clk),
+				.wen(resetn && cpuregs_write[i] && latched_rd),
+				.waddr(cpuregs_waddr[i]),
+				.raddr1(cpuregs_raddr1[i]),
+				.raddr2(cpuregs_raddr2[i]),
+				.wdata(cpuregs_wrdata[i]),
+				.rdata1(cpuregs_rdata1[i]),
+				.rdata2(cpuregs_rdata2[i])
+			);
+			assign cpuregs_waddr[i] = latched_rd;
+			assign cpuregs_raddr1[i] = ENABLE_REGS_DUALPORT ? decoded_rs1 : decoded_rs;
+			assign cpuregs_raddr2[i] = ENABLE_REGS_DUALPORT ? decoded_rs2 : 0;
+		end
+	endgenerate
 
 	always @* begin
 		decoded_rs = 'bx;
 		if (ENABLE_REGS_DUALPORT) begin
-			cpuregs_rs1 = decoded_rs1 ? cpuregs_rdata1 : 0;
-			cpuregs_rs2 = decoded_rs2 ? cpuregs_rdata2 : 0;
+			cpuregs_rs1 = decoded_rs1 ? cpuregs_rdata1[active_hart] : 0;
+			cpuregs_rs2 = decoded_rs2 ? cpuregs_rdata2[active_hart] : 0;
 		end else begin
 			decoded_rs = (cpu_state == cpu_state_ld_rs2) ? decoded_rs2 : decoded_rs1;
-			cpuregs_rs1 = decoded_rs ? cpuregs_rdata1 : 0;
+			cpuregs_rs1 = decoded_rs ? cpuregs_rdata1[active_hart] : 0;
 			cpuregs_rs2 = cpuregs_rs1;
 		end
 	end
@@ -1982,16 +2001,16 @@ module picorv32 #(
 			rvfi_rd_addr <= 0;
 			rvfi_rd_wdata <= 0;
 		end else
-		if (cpuregs_write && !irq_state) begin
+		if (cpuregs_write[active_hart] && !irq_state) begin
 `ifdef PICORV32_TESTBUG_003
 			rvfi_rd_addr <= latched_rd ^ 1;
 `else
 			rvfi_rd_addr <= latched_rd;
 `endif
 `ifdef PICORV32_TESTBUG_004
-			rvfi_rd_wdata <= latched_rd ? cpuregs_wrdata ^ 1 : 0;
+			rvfi_rd_wdata <= latched_rd ? cpuregs_wrdata[active_hart] ^ 1 : 0;
 `else
-			rvfi_rd_wdata <= latched_rd ? cpuregs_wrdata : 0;
+			rvfi_rd_wdata <= latched_rd ? cpuregs_wrdata[active_hart] : 0;
 `endif
 		end else
 		if (rvfi_valid) begin
