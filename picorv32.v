@@ -1271,6 +1271,7 @@ module picorv32 #(
 	/* WRITE TO REG */
 	reg cpuregs_write [0:THREADS-1];
 	reg [31:0] cpuregs_wrdata [0:THREADS-1];
+
 	reg [31:0] cpuregs_rs1;
 	reg [31:0] cpuregs_rs2;
 	reg [regindex_bits-1:0] decoded_rs;
