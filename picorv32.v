@@ -89,7 +89,7 @@ module picorv32 #(
 	parameter [31:0] STACKADDR = 32'h ffff_ffff,
 	// NOT USED ATM
 	parameter [ 0:0] ENABLE_MEM_DUALPORT = 1,
-	parameter [ 2:0] THREADS = 5
+	parameter [ 2:0] THREADS = 3
 ) (
 	input clk, resetn,
 	output reg trap,
