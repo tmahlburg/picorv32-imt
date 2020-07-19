@@ -187,7 +187,9 @@ module picorv32 #(
 	localparam [35:0] TRACE_IRQ    = {4'b 1000, 32'b 0};
 
 	reg [63:0] count_cycle, count_instr;
-	reg [31:0] reg_pc, reg_next_pc, reg_op1, reg_op2, reg_out;
+	reg [31:0] reg_pc [0:THREADS-1];
+	reg [31:0] reg_next_pc [0:THREADS-1];
+	reg [31:0] reg_op1, reg_op2, reg_out;
 	reg [4:0] reg_sh;
 
 	reg [31:0] next_insn_opcode;
@@ -205,7 +207,7 @@ module picorv32 #(
 	assign pcpi_rs1 = reg_op1;
 	assign pcpi_rs2 = reg_op2;
 
-	wire [31:0] next_pc;
+	wire [31:0] next_pc [0:THREADS-1];
 
 	reg irq_delay;
 	reg irq_active;
@@ -215,17 +217,17 @@ module picorv32 #(
 
 	/* THREAD CONTROL */
 	localparam [2:0] no_hart = 3'b111;
-	reg [2:0] trap_hart;
-	reg [2:0] fetch_hart;
-	reg [2:0] ld_rs1_hart;
-	reg [2:0] ld_rs2_hart;
-	reg [2:0] exec_hart;
-	reg [2:0] shift_hart;
-	reg [2:0] stmem_hart;
-	reg [2:0] ldmem_hart;
+	reg [2:0] trap_hart = no_hart;
+	reg [2:0] fetch_hart = no_hart;
+	reg [2:0] ld_rs1_hart = no_hart;
+	reg [2:0] ld_rs2_hart = no_hart;
+	reg [2:0] exec_hart = no_hart;
+	reg [2:0] shift_hart = no_hart;
+	reg [2:0] stmem_hart = no_hart;
+	reg [2:0] ldmem_hart = no_hart;
 
 	// hart_ready[hart_id] == cpu_state_*, if hart_id is ready to transition to the next cpu state
-	reg [THREADS-1:0] hart_ready [8:0];
+	reg [7:0] hart_ready [THREADS-1:0];
 
 `ifndef PICORV32_REGS
 	reg [31:0] cpuregs [0:regfile_size-1];
@@ -541,7 +543,7 @@ module picorv32 #(
 	wire instr_done = resetn && ((instr_xfer && |instr_state && instr_do_rinst) || (&instr_state && instr_do_rinst));
 
 	assign instr_la_read = resetn && (!instr_state && (instr_do_rinst || instr_do_prefetch));
-	assign instr_la_addr = {next_pc[31:2], 2'b00};
+	assign instr_la_addr = {next_pc[fetch_hart][31:2], 2'b00};
 
 	assign instr_rdata_latched = (instr_xfer || LATCHED_MEM_RDATA) ? instr_rdata : instr_rdata_q;
 
@@ -631,7 +633,9 @@ module picorv32 #(
 	reg instr_getq, instr_setq, instr_retirq, instr_maskirq, instr_waitirq, instr_timer;
 	wire instr_trap;
 
-	reg [regindex_bits-1:0] decoded_rd, decoded_rs1, decoded_rs2;
+	reg [regindex_bits-1:0] decoded_rd;
+	reg [regindex_bits-1:0] decoded_rs1;
+	reg [regindex_bits-1:0] decoded_rs2;
 	reg [31:0] decoded_imm, decoded_imm_j;
 	reg decoder_trigger;
 	reg decoder_trigger_q;
@@ -742,7 +746,7 @@ module picorv32 #(
 	reg [4:0] q_insn_rd;
 	reg dbg_next;
 
-	wire launch_next_insn;
+	wire launch_next_insn [0:THREADS-1];
 	reg dbg_valid_insn;
 
 	reg [63:0] cached_ascii_instr;
@@ -759,12 +763,12 @@ module picorv32 #(
 		q_insn_rs1 <= dbg_insn_rs1;
 		q_insn_rs2 <= dbg_insn_rs2;
 		q_insn_rd <= dbg_insn_rd;
-		dbg_next <= launch_next_insn;
+		//dbg_next <= launch_next_insn; <-- TODO
 
 		if (!resetn || trap)
 			dbg_valid_insn <= 0;
-		else if (launch_next_insn)
-			dbg_valid_insn <= 1;
+		// else if (launch_next_insn) <-- TODO
+			// dbg_valid_insn <= 1;
 
 		if (decoder_trigger_q) begin
 			cached_ascii_instr <= new_ascii_instr;
@@ -778,9 +782,9 @@ module picorv32 #(
 			cached_insn_rd <= decoded_rd;
 		end
 
-		if (launch_next_insn) begin
-			dbg_insn_addr <= next_pc;
-		end
+		//if (launch_next_insn) begin <-- TODO
+		//	dbg_insn_addr <= next_pc;
+		//end
 	end
 
 	always @* begin
@@ -1156,24 +1160,25 @@ module picorv32 #(
 	localparam cpu_state_ldmem  = 8'b00000001;
 	localparam cpu_state_busy   = 8'b11111111;
 
-	reg [7:0] cpu_state [0:THREADS-1];
 	reg [1:0] irq_state;
 
-/* multiply by threads
-	`FORMAL_KEEP reg [127:0] dbg_ascii_state;
+	`FORMAL_KEEP reg [127:0] dbg_ascii_state [0:THREADS-1];
 
+	integer i;
 	always @* begin
-		dbg_ascii_state = "";
-		if (cpu_state == cpu_state_trap)   dbg_ascii_state = "trap";
-		if (cpu_state == cpu_state_fetch)  dbg_ascii_state = "fetch";
-		if (cpu_state == cpu_state_ld_rs1) dbg_ascii_state = "ld_rs1";
-		if (cpu_state == cpu_state_ld_rs2) dbg_ascii_state = "ld_rs2";
-		if (cpu_state == cpu_state_exec)   dbg_ascii_state = "exec";
-		if (cpu_state == cpu_state_shift)  dbg_ascii_state = "shift";
-		if (cpu_state == cpu_state_stmem)  dbg_ascii_state = "stmem";
-		if (cpu_state == cpu_state_ldmem)  dbg_ascii_state = "ldmem";
+		for (i = 0; i < THREADS; i = i + 1) begin
+			dbg_ascii_state[i] = "";
+			if (hart_ready[i] == cpu_state_trap)   dbg_ascii_state[i] = "trap";
+			if (hart_ready[i] == cpu_state_fetch)  dbg_ascii_state[i] = "fetch";
+			if (hart_ready[i] == cpu_state_ld_rs1) dbg_ascii_state[i] = "ld_rs1";
+			if (hart_ready[i] == cpu_state_ld_rs2) dbg_ascii_state[i] = "ld_rs2";
+			if (hart_ready[i] == cpu_state_exec)   dbg_ascii_state[i] = "exec";
+			if (hart_ready[i] == cpu_state_shift)  dbg_ascii_state[i] = "shift";
+			if (hart_ready[i] == cpu_state_stmem)  dbg_ascii_state[i] = "stmem";
+			if (hart_ready[i] == cpu_state_ldmem)  dbg_ascii_state[i] = "ldmem";
+			if (hart_ready[i] == cpu_state_busy)   dbg_ascii_state[i] = "busy";
+		end
 	end
-*/
 
 	reg set_instr_do_rinst;
 	reg set_mem_do_rdata;
@@ -1187,10 +1192,14 @@ module picorv32 #(
 	reg latched_is_lu;
 	reg latched_is_lh;
 	reg latched_is_lb;
-	reg [regindex_bits-1:0] latched_rd;
+	reg [regindex_bits-1:0] latched_rd [0:THREADS-1];
 
 	reg [31:0] current_pc;
-	assign next_pc = latched_store && latched_branch ? reg_out & ~1 : reg_next_pc;
+	genvar h;
+	generate
+		for (h = 0; h < THREADS; h = h + 1)
+			assign next_pc[h] = latched_store && latched_branch ? reg_out & ~1 : reg_next_pc[h];
+	endgenerate
 
 	reg [3:0] pcpi_timeout_counter;
 	reg pcpi_timeout;
@@ -1286,39 +1295,39 @@ module picorv32 #(
 	reg cpuregs_write [0:THREADS-1];
 	reg [31:0] cpuregs_wrdata [0:THREADS-1];
 
-	reg [31:0] cpuregs_rs1;
-	reg [31:0] cpuregs_rs2;
+	reg [31:0] cpuregs_rs1 [0:THREADS-1];
+	reg [31:0] cpuregs_rs2 [0:THREADS-1];
 	reg [regindex_bits-1:0] decoded_rs;
 
 	always @* begin
-		cpuregs_write[active_hart] = 0;
-		cpuregs_wrdata[active_hart] = 'bx;
+		if (fetch_hart != no_hart) begin
+			cpuregs_write[fetch_hart] = 0;
+			cpuregs_wrdata[fetch_hart] = 'bx;
 
-		if (cpu_state[active_hart] == cpu_state_fetch) begin
 			(* parallel_case *)
 			case (1'b1)
 				latched_branch: begin
-					cpuregs_wrdata[active_hart] = reg_pc + (latched_compr ? 2 : 4);
-					cpuregs_write[active_hart] = 1;
+					cpuregs_wrdata[fetch_hart] = reg_pc[fetch_hart] + (latched_compr ? 2 : 4);
+					cpuregs_write[fetch_hart] = 1;
 				end
 				latched_store && !latched_branch: begin
-					cpuregs_wrdata[active_hart] = latched_stalu ? alu_out_q : reg_out;
-					cpuregs_write[active_hart] = 1;
+					cpuregs_wrdata[fetch_hart] = latched_stalu ? alu_out_q : reg_out;
+					cpuregs_write[fetch_hart] = 1;
 				end
 				ENABLE_IRQ && irq_state[0]: begin
-					cpuregs_wrdata[active_hart] = reg_next_pc | latched_compr;
-					cpuregs_write[active_hart] = 1;
+					cpuregs_wrdata[fetch_hart] = reg_next_pc[fetch_hart] | latched_compr;
+					cpuregs_write[fetch_hart] = 1;
 				end
 				ENABLE_IRQ && irq_state[1]: begin
-					cpuregs_wrdata[active_hart] = irq_pending & ~irq_mask;
-					cpuregs_write[active_hart] = 1;
+					cpuregs_wrdata[fetch_hart] = irq_pending & ~irq_mask;
+					cpuregs_write[fetch_hart] = 1;
 				end
 			endcase
 		end
 	end
 	/* END WRITE TO REG */
 
-/* USED WITH INTERNAL REG */
+/* USED WITH INTERNAL REG --> TO DELETE OR IMPLEMENT */
 `ifndef PICORV32_REGS
 	always @(posedge clk) begin
 		if (resetn && cpuregs_write && latched_rd)
@@ -1356,47 +1365,52 @@ module picorv32 #(
 	wire [31:0] cpuregs_rdata1 [0:THREADS];
 	wire [31:0] cpuregs_rdata2 [0:THREADS];
 
-	//wire [5:0] cpuregs_waddr = latched_rd;
 	wire [5:0] cpuregs_waddr [0:THREADS];
-	//wire [5:0] cpuregs_raddr1 = ENABLE_REGS_DUALPORT ? decoded_rs1 : decoded_rs;
 	wire [5:0] cpuregs_raddr1 [0:THREADS];
-	//wire [5:0] cpuregs_raddr2 = ENABLE_REGS_DUALPORT ? decoded_rs2 : 0;
 	wire [5:0] cpuregs_raddr2 [0:THREADS];
 
 
-	genvar i;
+	genvar j;
 	generate
-		for (i = 0; i < THREADS; i = i + 1) begin : cpuregs
+		for (j = 0; j < THREADS; j = j + 1) begin : cpuregs
 			`PICORV32_REGS cpuregs (
 				.clk(clk),
-				.wen(resetn && cpuregs_write[i] && latched_rd),
-				.waddr(cpuregs_waddr[i]),
-				.raddr1(cpuregs_raddr1[i]),
-				.raddr2(cpuregs_raddr2[i]),
-				.wdata(cpuregs_wrdata[i]),
-				.rdata1(cpuregs_rdata1[i]),
-				.rdata2(cpuregs_rdata2[i])
+				.wen(resetn && cpuregs_write[j] && latched_rd[j]),
+				.waddr(cpuregs_waddr[j]),
+				.raddr1(cpuregs_raddr1[j]),
+				.raddr2(cpuregs_raddr2[j]),
+				.wdata(cpuregs_wrdata[j]),
+				.rdata1(cpuregs_rdata1[j]),
+				.rdata2(cpuregs_rdata2[j])
 			);
-			assign cpuregs_waddr[i] = latched_rd;
-			assign cpuregs_raddr1[i] = ENABLE_REGS_DUALPORT ? decoded_rs1 : decoded_rs;
-			assign cpuregs_raddr2[i] = ENABLE_REGS_DUALPORT ? decoded_rs2 : 0;
+			assign cpuregs_waddr[j] = latched_rd[j];
+			assign cpuregs_raddr1[j] = ENABLE_REGS_DUALPORT ? decoded_rs1 : decoded_rs;
+			assign cpuregs_raddr2[j] = ENABLE_REGS_DUALPORT ? decoded_rs2 : 0;
 		end
 	endgenerate
 
-	always @* begin
-		decoded_rs = 'bx;
-		if (ENABLE_REGS_DUALPORT) begin
-			cpuregs_rs1 = decoded_rs1 ? cpuregs_rdata1[active_hart] : 0;
-			cpuregs_rs2 = decoded_rs2 ? cpuregs_rdata2[active_hart] : 0;
-		end else begin
-			decoded_rs = (cpu_state == cpu_state_ld_rs2) ? decoded_rs2 : decoded_rs1;
-			cpuregs_rs1 = decoded_rs ? cpuregs_rdata1[active_hart] : 0;
-			cpuregs_rs2 = cpuregs_rs1;
+	generate
+		for (j = 0; j < THREADS; j = j + 1) begin
+			always @* begin
+				decoded_rs = 'bx;
+				if (ENABLE_REGS_DUALPORT) begin
+					cpuregs_rs1[j] = decoded_rs1 ? cpuregs_rdata1[j] : 0;
+					cpuregs_rs2[j] = decoded_rs2 ? cpuregs_rdata2[j] : 0;
+				end else begin
+					decoded_rs = (ld_rs2_hart == j) ? decoded_rs2 : decoded_rs1;
+					cpuregs_rs1[j] = decoded_rs ? cpuregs_rdata1[j] : 0;
+					cpuregs_rs2[j] = cpuregs_rs1[j];
+				end
+			end
 		end
-	end
+	endgenerate
 `endif
 
-	assign launch_next_insn = cpu_state == cpu_state_fetch && decoder_trigger && (!ENABLE_IRQ || irq_delay || irq_active || !(irq_pending & ~irq_mask));
+	generate
+		for (j = 0; j < THREADS; j = j + 1) begin
+			assign launch_next_insn[j] = (fetch_hart == j) && decoder_trigger && (!ENABLE_IRQ || irq_delay || irq_active || !(irq_pending & ~irq_mask));
+		end
+	endgenerate
 
 	integer k;
 	/* MAIN CPU LOOP */
@@ -1414,12 +1428,14 @@ module picorv32 #(
 		alu_wait <= 0;
 		alu_wait_2 <= 0;
 
+		/* TODO
 		if (launch_next_insn) begin
 			dbg_rs1val <= 'bx;
 			dbg_rs2val <= 'bx;
 			dbg_rs1val_valid <= 0;
 			dbg_rs2val_valid <= 0;
 		end
+		*/
 
 		if (WITH_PCPI && CATCH_ILLINSN) begin
 			if (resetn && pcpi_valid && !pcpi_int_wait) begin
@@ -1457,8 +1473,10 @@ module picorv32 #(
 
 		/* CPU SETUP */
 		if (!resetn) begin
-			reg_pc <= PROGADDR_RESET;
-			reg_next_pc <= PROGADDR_RESET;
+			for (k = 0; k < THREADS; k = k + 1) begin
+				reg_pc[k] <= PROGADDR_RESET;
+				reg_next_pc[k] <= PROGADDR_RESET;
+			end
 			if (ENABLE_COUNTERS)
 				count_instr <= 0;
 			latched_store <= 0;
@@ -1479,529 +1497,537 @@ module picorv32 #(
 			timer <= 0;
 			if (~STACKADDR) begin
 				latched_store <= 1;
-				latched_rd <= 2;
+				for (k = 0; k < THREADS; k = k + 1)
+					latched_rd[k] <= 2;
 				reg_out <= STACKADDR;
 			end
-			cpu_state[0] <= cpu_state_fetch;
 			fetch_hart <= 0;
 			hart_ready[0] <= cpu_state_busy;
 			for (k = 1; k < THREADS; k = k + 1)
 				hart_ready[k] <= cpu_state_fetch;
 		end else
 		/* MAIN CPU STATE MACHINE */
-		(* parallel_case, full_case *)
-		case (cpu_state)
-			cpu_state_trap: begin
+		if (trap_hart != no_hart)
 				trap <= 1;
+		if (fetch_hart != no_hart) begin
+			instr_do_rinst <= !decoder_trigger && !do_waitirq;
+			instr_wordsize <= 0;
+
+			current_pc = reg_next_pc[fetch_hart];
+
+			(* parallel_case *)
+			case (1'b1)
+				latched_branch: begin
+					current_pc = latched_store ? (latched_stalu ? alu_out_q : reg_out) & ~1 : reg_next_pc[fetch_hart];
+					`debug($display("ST_RD:  %2d 0x%08x, BRANCH 0x%08x", latched_rd, reg_pc + (latched_compr ? 2 : 4), current_pc);)
+				end
+				latched_store && !latched_branch: begin
+					`debug($display("ST_RD:  %2d 0x%08x", latched_rd, latched_stalu ? alu_out_q : reg_out[fetch_hart]);)
+				end
+				ENABLE_IRQ && irq_state[0]: begin
+					current_pc[fetch_hart] = PROGADDR_IRQ;
+					irq_active <= 1;
+					instr_do_rinst <= 1;
+				end
+				ENABLE_IRQ && irq_state[1]: begin
+					eoi <= irq_pending & ~irq_mask;
+					next_irq_pending = next_irq_pending & irq_mask;
+				end
+			endcase
+
+			if (ENABLE_TRACE && latched_trace) begin
+				latched_trace <= 0;
+				trace_valid <= 1;
+				if (latched_branch)
+					trace_data <= (irq_active ? TRACE_IRQ : 0) | TRACE_BRANCH | (current_pc & 32'hfffffffe);
+				else
+					trace_data <= (irq_active ? TRACE_IRQ : 0) | (latched_stalu ? alu_out_q : reg_out);
 			end
 
-			cpu_state_fetch: begin
-				instr_do_rinst <= !decoder_trigger && !do_waitirq;
-				instr_wordsize <= 0;
+			reg_pc[fetch_hart] <= current_pc;
+			reg_next_pc[fetch_hart] <= current_pc;
 
-				current_pc = reg_next_pc;
+			latched_store <= 0;
+			latched_stalu <= 0;
+			latched_branch <= 0;
+			latched_is_lu <= 0;
+			latched_is_lh <= 0;
+			latched_is_lb <= 0;
+			latched_rd[fetch_hart] <= decoded_rd;
+			latched_compr <= compressed_instr;
 
-				(* parallel_case *)
-				case (1'b1)
-					latched_branch: begin
-						current_pc = latched_store ? (latched_stalu ? alu_out_q : reg_out) & ~1 : reg_next_pc;
-						`debug($display("ST_RD:  %2d 0x%08x, BRANCH 0x%08x", latched_rd, reg_pc + (latched_compr ? 2 : 4), current_pc);)
-					end
-					latched_store && !latched_branch: begin
-						`debug($display("ST_RD:  %2d 0x%08x", latched_rd, latched_stalu ? alu_out_q : reg_out);)
-					end
-					ENABLE_IRQ && irq_state[0]: begin
-						current_pc = PROGADDR_IRQ;
-						irq_active <= 1;
-						instr_do_rinst <= 1;
-					end
-					ENABLE_IRQ && irq_state[1]: begin
-						eoi <= irq_pending & ~irq_mask;
-						next_irq_pending = next_irq_pending & irq_mask;
-					end
-				endcase
-
-				if (ENABLE_TRACE && latched_trace) begin
-					latched_trace <= 0;
-					trace_valid <= 1;
-					if (latched_branch)
-						trace_data <= (irq_active ? TRACE_IRQ : 0) | TRACE_BRANCH | (current_pc & 32'hfffffffe);
-					else
-						trace_data <= (irq_active ? TRACE_IRQ : 0) | (latched_stalu ? alu_out_q : reg_out);
+			if (ENABLE_IRQ && ((decoder_trigger && !irq_active && !irq_delay && |(irq_pending & ~irq_mask)) || irq_state)) begin
+				irq_state <=
+					irq_state == 2'b00 ? 2'b01 :
+					irq_state == 2'b01 ? 2'b10 : 2'b00;
+				latched_compr <= latched_compr;
+				if (ENABLE_IRQ_QREGS)
+					latched_rd[fetch_hart] <= irqregs_offset | irq_state[0];
+				else
+					latched_rd[fetch_hart] <= irq_state[0] ? 4 : 3;
+			end else
+			if (ENABLE_IRQ && (decoder_trigger || do_waitirq) && instr_waitirq) begin
+				if (irq_pending) begin
+					latched_store <= 1;
+					reg_out <= irq_pending;
+					reg_next_pc[fetch_hart] <= current_pc + (compressed_instr ? 2 : 4);
+					instr_do_rinst <= 1;
+				end else
+					do_waitirq <= 1;
+			end else
+			if (decoder_trigger) begin
+				`debug($display("-- %-0t", $time);)
+				irq_delay <= irq_active;
+				reg_next_pc[fetch_hart] <= current_pc + (compressed_instr ? 2 : 4);
+				if (ENABLE_TRACE)
+					latched_trace <= 1;
+				if (ENABLE_COUNTERS) begin
+					count_instr <= count_instr + 1;
+					if (!ENABLE_COUNTERS64) count_instr[63:32] <= 0;
 				end
-
-				reg_pc <= current_pc;
-				reg_next_pc <= current_pc;
-
-				latched_store <= 0;
-				latched_stalu <= 0;
-				latched_branch <= 0;
-				latched_is_lu <= 0;
-				latched_is_lh <= 0;
-				latched_is_lb <= 0;
-				latched_rd <= decoded_rd;
-				latched_compr <= compressed_instr;
-
-				if (ENABLE_IRQ && ((decoder_trigger && !irq_active && !irq_delay && |(irq_pending & ~irq_mask)) || irq_state)) begin
-					irq_state <=
-						irq_state == 2'b00 ? 2'b01 :
-						irq_state == 2'b01 ? 2'b10 : 2'b00;
-					latched_compr <= latched_compr;
-					if (ENABLE_IRQ_QREGS)
-						latched_rd <= irqregs_offset | irq_state[0];
-					else
-						latched_rd <= irq_state[0] ? 4 : 3;
-				end else
-				if (ENABLE_IRQ && (decoder_trigger || do_waitirq) && instr_waitirq) begin
-					if (irq_pending) begin
-						latched_store <= 1;
-						reg_out <= irq_pending;
-						reg_next_pc <= current_pc + (compressed_instr ? 2 : 4);
-						instr_do_rinst <= 1;
-					end else
-						do_waitirq <= 1;
-				end else
-				if (decoder_trigger) begin
-					`debug($display("-- %-0t", $time);)
-					irq_delay <= irq_active;
-					reg_next_pc <= current_pc + (compressed_instr ? 2 : 4);
-					if (ENABLE_TRACE)
-						latched_trace <= 1;
-					if (ENABLE_COUNTERS) begin
-						count_instr <= count_instr + 1;
-						if (!ENABLE_COUNTERS64) count_instr[63:32] <= 0;
-					end
-					if (instr_jal) begin
-						instr_do_rinst <= 1;
-						reg_next_pc <= current_pc + decoded_imm_j;
-						latched_branch <= 1;
-					end else begin
-						instr_do_rinst <= 0;
-						instr_do_prefetch <= !instr_jalr && !instr_retirq;
-						hart_ready[fetch_hart] <= cpu_state_ld_rs1;
-						fetch_hart <= no_hart;
-					end
+				if (instr_jal) begin
+					instr_do_rinst <= 1;
+					reg_next_pc[fetch_hart] <= current_pc + decoded_imm_j;
+					latched_branch <= 1;
+				end else begin
+					instr_do_rinst <= 0;
+					instr_do_prefetch <= !instr_jalr && !instr_retirq;
+					hart_ready[fetch_hart] <= cpu_state_ld_rs1;
+					fetch_hart <= no_hart;
 				end
 			end
+		end
 
-			cpu_state_ld_rs1: begin
-				reg_op1 <= 'bx;
-				reg_op2 <= 'bx;
+		if (ld_rs1_hart != no_hart) begin
+			reg_op1 <= 'bx;
+			reg_op2 <= 'bx;
 
-				(* parallel_case *)
-				case (1'b1)
-					(CATCH_ILLINSN || WITH_PCPI) && instr_trap: begin
-						// TO DELETE IF PCPI IS DELETED
-						if (WITH_PCPI) begin
-							`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1);)
-							reg_op1 <= cpuregs_rs1;
-							dbg_rs1val <= cpuregs_rs1;
-							dbg_rs1val_valid <= 1;
-							if (ENABLE_REGS_DUALPORT) begin
-								pcpi_valid <= 1;
-								`debug($display("LD_RS2: %2d 0x%08x", decoded_rs2, cpuregs_rs2);)
-								reg_sh <= cpuregs_rs2;
-								reg_op2 <= cpuregs_rs2;
-								dbg_rs2val <= cpuregs_rs2;
-								dbg_rs2val_valid <= 1;
-								if (pcpi_int_ready) begin
-									instr_do_rinst <= 1;
-									pcpi_valid <= 0;
-									reg_out <= pcpi_int_rd;
-									latched_store <= pcpi_int_wr;
-									hart_ready[ld_rs1_hart] <= cpu_state_fetch;
-									ld_rs1_hart <= no_hart;
-								end else
-								if (CATCH_ILLINSN && (pcpi_timeout || instr_ecall_ebreak)) begin
-									pcpi_valid <= 0;
-									`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
-									if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
-										next_irq_pending[irq_ebreak] = 1;
-										hart_ready[ld_rs1_hart] <= cpu_state_fetch;
-										ld_rs1_hart <= no_hart;
-									end else begin
-										hart_ready[ld_rs1_hart] <= cpu_state_trap;
-										ld_rs1_hart <= no_hart;
-									end
-								end
-							end else begin
-								hart_ready[ld_rs1_hart] <= cpu_state_ld_rs2;
-								ld_rs1_hart <= no_hart;
-							end
-						// END DELETE
-						end else begin
-							`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
-							if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
-								next_irq_pending[irq_ebreak] = 1;
-								hart_ready[ld_rs1_hart] <= cpu_state_fetch;
-								ld_rs1_hart <= no_hart;
-							end else begin
-								hart_ready[ld_rs1_hart] <= cpu_state_trap;
-								ld_rs1_hart <= no_hart;
-							end
-						end
-					end
-					ENABLE_COUNTERS && is_rdcycle_rdcycleh_rdinstr_rdinstrh: begin
-						(* parallel_case, full_case *)
-						case (1'b1)
-							instr_rdcycle:
-								reg_out <= count_cycle[31:0];
-							instr_rdcycleh && ENABLE_COUNTERS64:
-								reg_out <= count_cycle[63:32];
-							instr_rdinstr:
-								reg_out <= count_instr[31:0];
-							instr_rdinstrh && ENABLE_COUNTERS64:
-								reg_out <= count_instr[63:32];
-						endcase
-						latched_store <= 1;
-						hart_ready[ld_rs1_hart] <= cpu_state_fetch;
-						ld_rs1_hart <= no_hart;
-					end
-					is_lui_auipc_jal: begin
-						reg_op1 <= instr_lui ? 0 : reg_pc;
-						reg_op2 <= decoded_imm;
-						if (TWO_CYCLE_ALU)
-							alu_wait <= 1;
-						else
-							instr_do_rinst <= instr_do_prefetch;
-						hart_ready[ld_rs1_hart] <= cpu_state_exec;
-						ld_rs1_hart <= no_hart;
-					end
-					ENABLE_IRQ && ENABLE_IRQ_QREGS && instr_getq: begin
-						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1);)
-						reg_out <= cpuregs_rs1;
-						dbg_rs1val <= cpuregs_rs1;
-						dbg_rs1val_valid <= 1;
-						latched_store <= 1;
-						hart_ready[ld_rs1_hart] <= cpu_state_fetch;
-						ld_rs1_hart <= no_hart;
-					end
-					ENABLE_IRQ && ENABLE_IRQ_QREGS && instr_setq: begin
-						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1);)
-						reg_out <= cpuregs_rs1;
-						dbg_rs1val <= cpuregs_rs1;
-						dbg_rs1val_valid <= 1;
-						latched_rd <= latched_rd | irqregs_offset;
-						latched_store <= 1;
-						hart_ready[ld_rs1_hart] <= cpu_state_fetch;
-						ld_rs1_hart <= no_hart;
-					end
-					ENABLE_IRQ && instr_retirq: begin
-						eoi <= 0;
-						irq_active <= 0;
-						latched_branch <= 1;
-						latched_store <= 1;
-						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1);)
-						reg_out <= CATCH_MISALIGN ? (cpuregs_rs1 & 32'h fffffffe) : cpuregs_rs1;
-						dbg_rs1val <= cpuregs_rs1;
-						dbg_rs1val_valid <= 1;
-						hart_ready[ld_rs1_hart] <= cpu_state_fetch;
-						ld_rs1_hart <= no_hart;
-					end
-					ENABLE_IRQ && instr_maskirq: begin
-						latched_store <= 1;
-						reg_out <= irq_mask;
-						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1);)
-						irq_mask <= cpuregs_rs1 | MASKED_IRQ;
-						dbg_rs1val <= cpuregs_rs1;
-						dbg_rs1val_valid <= 1;
-						hart_ready[ld_rs1_hart] <= cpu_state_fetch;
-						ld_rs1_hart <= no_hart;
-					end
-					ENABLE_IRQ && ENABLE_IRQ_TIMER && instr_timer: begin
-						latched_store <= 1;
-						reg_out <= timer;
-						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1);)
-						timer <= cpuregs_rs1;
-						dbg_rs1val <= cpuregs_rs1;
-						dbg_rs1val_valid <= 1;
-						hart_ready[ld_rs1_hart] <= cpu_state_fetch;
-						ld_rs1_hart <= no_hart;
-					end
-					is_lb_lh_lw_lbu_lhu && !instr_trap: begin
-						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1);)
-						reg_op1 <= cpuregs_rs1;
-						dbg_rs1val <= cpuregs_rs1;
-						dbg_rs1val_valid <= 1;
-						hart_ready[ld_rs1_hart] <= cpu_state_ldmem;
-						ld_rs1_hart <= no_hart;
-						instr_do_rinst <= 1;
-					end
-					is_slli_srli_srai && !BARREL_SHIFTER: begin
-						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1);)
-						reg_op1 <= cpuregs_rs1;
-						dbg_rs1val <= cpuregs_rs1;
-						dbg_rs1val_valid <= 1;
-						reg_sh <= decoded_rs2;
-						hart_ready[ld_rs1_hart] <= cpu_state_shift;
-						ld_rs1_hart <= no_hart;
-					end
-					is_jalr_addi_slti_sltiu_xori_ori_andi, is_slli_srli_srai && BARREL_SHIFTER: begin
-						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1);)
-						reg_op1 <= cpuregs_rs1;
-						dbg_rs1val <= cpuregs_rs1;
-						dbg_rs1val_valid <= 1;
-						reg_op2 <= is_slli_srli_srai && BARREL_SHIFTER ? decoded_rs2 : decoded_imm;
-						if (TWO_CYCLE_ALU)
-							alu_wait <= 1;
-						else
-							instr_do_rinst <= instr_do_prefetch;
-						hart_ready[ld_rs1_hart] <= cpu_state_exec;
-						ld_rs1_hart <= no_hart;
-					end
-					default: begin
-						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1);)
-						reg_op1 <= cpuregs_rs1;
-						dbg_rs1val <= cpuregs_rs1;
+			(* parallel_case *)
+			case (1'b1)
+				(CATCH_ILLINSN || WITH_PCPI) && instr_trap: begin
+					// TO DELETE IF PCPI IS DELETED
+					if (WITH_PCPI) begin
+						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1[ld_rs1_hart]);)
+						reg_op1 <= cpuregs_rs1[ld_rs1_hart];
+						dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
 						dbg_rs1val_valid <= 1;
 						if (ENABLE_REGS_DUALPORT) begin
-							`debug($display("LD_RS2: %2d 0x%08x", decoded_rs2, cpuregs_rs2);)
-							reg_sh <= cpuregs_rs2;
-							reg_op2 <= cpuregs_rs2;
-							dbg_rs2val <= cpuregs_rs2;
+							pcpi_valid <= 1;
+							`debug($display("LD_RS2: %2d 0x%08x", decoded_rs2, cpuregs_rs2[ld_rs1_hart]);)
+							reg_sh <= cpuregs_rs2[ld_rs1_hart];
+							reg_op2 <= cpuregs_rs2[ld_rs1_hart];
+							// TODO
+							dbg_rs2val <= cpuregs_rs2[ld_rs1_hart];
 							dbg_rs2val_valid <= 1;
-							(* parallel_case *)
-							case (1'b1)
-								is_sb_sh_sw: begin
-									hart_ready[ld_rs1_hart] <= cpu_state_stmem;
+							if (pcpi_int_ready) begin
+								instr_do_rinst <= 1;
+								pcpi_valid <= 0;
+								reg_out <= pcpi_int_rd;
+								latched_store <= pcpi_int_wr;
+								hart_ready[ld_rs1_hart] <= cpu_state_fetch;
+								ld_rs1_hart <= no_hart;
+							end else
+							if (CATCH_ILLINSN && (pcpi_timeout || instr_ecall_ebreak)) begin
+								pcpi_valid <= 0;
+								`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
+								if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
+									next_irq_pending[irq_ebreak] = 1;
+									hart_ready[ld_rs1_hart] <= cpu_state_fetch;
 									ld_rs1_hart <= no_hart;
-									instr_do_rinst <= 1;
-								end
-								is_sll_srl_sra && !BARREL_SHIFTER: begin
-									hart_ready[ld_rs1_hart] <= cpu_state_shift;
+								end else begin
+									hart_ready[ld_rs1_hart] <= cpu_state_trap;
 									ld_rs1_hart <= no_hart;
 								end
-								default: begin
-									if (TWO_CYCLE_ALU || (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu)) begin
-										alu_wait_2 <= TWO_CYCLE_ALU && (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu);
-										alu_wait <= 1;
-									end else
-										instr_do_rinst <= instr_do_prefetch;
-									hart_ready[ld_rs1_hart] <= cpu_state_exec;
-									ld_rs1_hart <= no_hart;
-								end
-							endcase
+							end
 						end else begin
 							hart_ready[ld_rs1_hart] <= cpu_state_ld_rs2;
 							ld_rs1_hart <= no_hart;
 						end
-					end
-				endcase
-			end
-
-			cpu_state_ld_rs2: begin
-				`debug($display("LD_RS2: %2d 0x%08x", decoded_rs2, cpuregs_rs2);)
-				reg_sh <= cpuregs_rs2;
-				reg_op2 <= cpuregs_rs2;
-				dbg_rs2val <= cpuregs_rs2;
-				dbg_rs2val_valid <= 1;
-
-				(* parallel_case *)
-				case (1'b1)
-					WITH_PCPI && instr_trap: begin
-						pcpi_valid <= 1;
-						// TO DELETE IF PCPI GETS DELETED
-						if (pcpi_int_ready) begin
-							instr_do_rinst <= 1;
-							pcpi_valid <= 0;
-							reg_out <= pcpi_int_rd;
-							latched_store <= pcpi_int_wr;
-							hart_ready[ld_rs2_hart] <= cpu_state_fetch;
-							ld_rs2_hart <= no_hart;
-						end else
-						// END DELETE
-						if (CATCH_ILLINSN && (pcpi_timeout || instr_ecall_ebreak)) begin
-							pcpi_valid <= 0;
-							`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
-							if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
-								next_irq_pending[irq_ebreak] = 1;
-								hart_ready[ld_rs2_hart] <= cpu_state_fetch;
-								ld_rs2_hart <= no_hart;
-							end else begin
-								hart_ready[ld_rs2_hart] <= cpu_state_trap;
-								ld_rs2_hart <= no_hart;
-							end
+					// END DELETE
+					end else begin
+						`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
+						if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
+							next_irq_pending[irq_ebreak] = 1;
+							hart_ready[ld_rs1_hart] <= cpu_state_fetch;
+							ld_rs1_hart <= no_hart;
+						end else begin
+							hart_ready[ld_rs1_hart] <= cpu_state_trap;
+							ld_rs1_hart <= no_hart;
 						end
 					end
-					is_sb_sh_sw: begin
-						hart_ready[ld_rs2_hart] <= cpu_state_stmem;
-						ld_rs2_hart <= no_hart;
-						instr_do_rinst <= 1;
-					end
-					is_sll_srl_sra && !BARREL_SHIFTER: begin
-						hart_ready[ld_rs2_hart] <= cpu_state_shift;
-						ld_rs2_hart <= no_hart;
-					end
-					default: begin
-						if (TWO_CYCLE_ALU || (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu)) begin
-							alu_wait_2 <= TWO_CYCLE_ALU && (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu);
-							alu_wait <= 1;
-						end else
-							instr_do_rinst <= instr_do_prefetch;
-						hart_ready[ld_rs2_hart] <= cpu_state_exec;
-						ld_rs2_hart <= no_hart;
-					end
-				endcase
-			end
-
-			cpu_state_exec: begin
-				reg_out <= reg_pc + decoded_imm;
-				if ((TWO_CYCLE_ALU || TWO_CYCLE_COMPARE) && (alu_wait || alu_wait_2)) begin
-					instr_do_rinst <= instr_do_prefetch && !alu_wait_2;
-					alu_wait <= alu_wait_2;
-				end else
-				if (is_beq_bne_blt_bge_bltu_bgeu) begin
-					latched_rd <= 0;
-					latched_store <= TWO_CYCLE_COMPARE ? alu_out_0_q : alu_out_0;
-					latched_branch <= TWO_CYCLE_COMPARE ? alu_out_0_q : alu_out_0;
-					if (instr_done)
-						hart_ready[exec_hart] <= cpu_state_fetch;
-						exec_hart <= no_hart;
-					if (TWO_CYCLE_COMPARE ? alu_out_0_q : alu_out_0) begin
-						decoder_trigger <= 0;
-						set_instr_do_rinst = 1;
-					end
-				end else begin
-					latched_branch <= instr_jalr;
+				end
+				ENABLE_COUNTERS && is_rdcycle_rdcycleh_rdinstr_rdinstrh: begin
+					(* parallel_case, full_case *)
+					case (1'b1)
+						instr_rdcycle:
+							reg_out <= count_cycle[31:0];
+						instr_rdcycleh && ENABLE_COUNTERS64:
+							reg_out <= count_cycle[63:32];
+						instr_rdinstr:
+							reg_out <= count_instr[31:0];
+						instr_rdinstrh && ENABLE_COUNTERS64:
+							reg_out <= count_instr[63:32];
+					endcase
 					latched_store <= 1;
-					latched_stalu <= 1;
+					hart_ready[ld_rs1_hart] <= cpu_state_fetch;
+					ld_rs1_hart <= no_hart;
+				end
+				is_lui_auipc_jal: begin
+					reg_op1 <= instr_lui ? 0 : reg_pc[ld_rs1_hart];
+					reg_op2 <= decoded_imm;
+					if (TWO_CYCLE_ALU)
+						alu_wait <= 1;
+					else
+						instr_do_rinst <= instr_do_prefetch;
+					hart_ready[ld_rs1_hart] <= cpu_state_exec;
+					ld_rs1_hart <= no_hart;
+				end
+				ENABLE_IRQ && ENABLE_IRQ_QREGS && instr_getq: begin
+					`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1[ld_rs1_hart]);)
+					reg_out <= cpuregs_rs1[ld_rs1_hart];
+					//TODO
+					dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+					dbg_rs1val_valid <= 1;
+					latched_store <= 1;
+					hart_ready[ld_rs1_hart] <= cpu_state_fetch;
+					ld_rs1_hart <= no_hart;
+				end
+				ENABLE_IRQ && ENABLE_IRQ_QREGS && instr_setq: begin
+					`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1[ld_rs1_hart]);)
+					reg_out <= cpuregs_rs1[ld_rs1_hart];
+					// TODO
+					dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+					dbg_rs1val_valid <= 1;
+					latched_rd[ld_rs1_hart] <= latched_rd[ld_rs1_hart] | irqregs_offset;
+					latched_store <= 1;
+					hart_ready[ld_rs1_hart] <= cpu_state_fetch;
+					ld_rs1_hart <= no_hart;
+				end
+				ENABLE_IRQ && instr_retirq: begin
+					eoi <= 0;
+					irq_active <= 0;
+					latched_branch <= 1;
+					latched_store <= 1;
+					`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1[ld_rs1_hart]);)
+					reg_out <= CATCH_MISALIGN ? (cpuregs_rs1[ld_rs1_hart] & 32'h fffffffe) : cpuregs_rs1[ld_rs1_hart];
+					// TODO
+					dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+					dbg_rs1val_valid <= 1;
+					hart_ready[ld_rs1_hart] <= cpu_state_fetch;
+					ld_rs1_hart <= no_hart;
+				end
+				ENABLE_IRQ && instr_maskirq: begin
+					latched_store <= 1;
+					reg_out <= irq_mask;
+					`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1[ld_rs1_hart]);)
+					irq_mask <= cpuregs_rs1[ld_rs1_hart] | MASKED_IRQ;
+					// TODO
+					dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+					dbg_rs1val_valid <= 1;
+					hart_ready[ld_rs1_hart] <= cpu_state_fetch;
+					ld_rs1_hart <= no_hart;
+				end
+				ENABLE_IRQ && ENABLE_IRQ_TIMER && instr_timer: begin
+					latched_store <= 1;
+					reg_out <= timer;
+					`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1[ld_rs1_hart]);)
+					timer <= cpuregs_rs1[ld_rs1_hart];
+					// TODO
+					dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+					dbg_rs1val_valid <= 1;
+					hart_ready[ld_rs1_hart] <= cpu_state_fetch;
+					ld_rs1_hart <= no_hart;
+				end
+				is_lb_lh_lw_lbu_lhu && !instr_trap: begin
+					`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1[ld_rs1_hart]);)
+					reg_op1 <= cpuregs_rs1[ld_rs1_hart];
+					// TODO
+					dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+					dbg_rs1val_valid <= 1;
+					hart_ready[ld_rs1_hart] <= cpu_state_ldmem;
+					ld_rs1_hart <= no_hart;
+					instr_do_rinst <= 1;
+				end
+				is_slli_srli_srai && !BARREL_SHIFTER: begin
+					`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1[ld_rs1_hart]);)
+					reg_op1 <= cpuregs_rs1[ld_rs1_hart];
+					// TODO
+					dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+					dbg_rs1val_valid <= 1;
+					reg_sh <= decoded_rs2;
+					hart_ready[ld_rs1_hart] <= cpu_state_shift;
+					ld_rs1_hart <= no_hart;
+				end
+				is_jalr_addi_slti_sltiu_xori_ori_andi, is_slli_srli_srai && BARREL_SHIFTER: begin
+					`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1[ld_rs1_hart]);)
+					reg_op1 <= cpuregs_rs1[ld_rs1_hart];
+					// TODO
+					dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+					dbg_rs1val_valid <= 1;
+					reg_op2 <= is_slli_srli_srai && BARREL_SHIFTER ? decoded_rs2 : decoded_imm;
+					if (TWO_CYCLE_ALU)
+						alu_wait <= 1;
+					else
+						instr_do_rinst <= instr_do_prefetch;
+					hart_ready[ld_rs1_hart] <= cpu_state_exec;
+					ld_rs1_hart <= no_hart;
+				end
+				default: begin
+					`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1, cpuregs_rs1[ld_rs1_hart]);)
+					reg_op1 <= cpuregs_rs1[ld_rs1_hart];
+					// TODO
+					dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+					dbg_rs1val_valid <= 1;
+					if (ENABLE_REGS_DUALPORT) begin
+						`debug($display("LD_RS2: %2d 0x%08x", decoded_rs2, cpuregs_rs2[ld_rs1_hart]);)
+						reg_sh <= cpuregs_rs2[ld_rs1_hart];
+						reg_op2 <= cpuregs_rs2[ld_rs1_hart];
+						// TODO
+						dbg_rs2val <= cpuregs_rs2[ld_rs1_hart];
+						dbg_rs2val_valid <= 1;
+						(* parallel_case *)
+						case (1'b1)
+							is_sb_sh_sw: begin
+								hart_ready[ld_rs1_hart] <= cpu_state_stmem;
+								ld_rs1_hart <= no_hart;
+								instr_do_rinst <= 1;
+							end
+							is_sll_srl_sra && !BARREL_SHIFTER: begin
+								hart_ready[ld_rs1_hart] <= cpu_state_shift;
+								ld_rs1_hart <= no_hart;
+							end
+							default: begin
+								if (TWO_CYCLE_ALU || (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu)) begin
+									alu_wait_2 <= TWO_CYCLE_ALU && (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu);
+									alu_wait <= 1;
+								end else
+									instr_do_rinst <= instr_do_prefetch;
+								hart_ready[ld_rs1_hart] <= cpu_state_exec;
+								ld_rs1_hart <= no_hart;
+							end
+						endcase
+					end else begin
+						hart_ready[ld_rs1_hart] <= cpu_state_ld_rs2;
+						ld_rs1_hart <= no_hart;
+					end
+				end
+			endcase
+		end
+
+		if (ld_rs2_hart != no_hart) begin
+			`debug($display("LD_RS2: %2d 0x%08x", decoded_rs2, cpuregs_rs2[ld_rs2_hart]);)
+			reg_sh <= cpuregs_rs2[ld_rs2_hart];
+			reg_op2 <= cpuregs_rs2[ld_rs2_hart];
+			// TODO
+			dbg_rs2val <= cpuregs_rs2[ld_rs2_hart];
+			dbg_rs2val_valid <= 1;
+
+			(* parallel_case *)
+			case (1'b1)
+				WITH_PCPI && instr_trap: begin
+					pcpi_valid <= 1;
+					// TO DELETE IF PCPI GETS DELETED
+					if (pcpi_int_ready) begin
+						instr_do_rinst <= 1;
+						pcpi_valid <= 0;
+						reg_out <= pcpi_int_rd;
+						latched_store <= pcpi_int_wr;
+						hart_ready[ld_rs2_hart] <= cpu_state_fetch;
+						ld_rs2_hart <= no_hart;
+					end else
+					// END DELETE
+					if (CATCH_ILLINSN && (pcpi_timeout || instr_ecall_ebreak)) begin
+						pcpi_valid <= 0;
+						`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
+						if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
+							next_irq_pending[irq_ebreak] = 1;
+							hart_ready[ld_rs2_hart] <= cpu_state_fetch;
+							ld_rs2_hart <= no_hart;
+						end else begin
+							hart_ready[ld_rs2_hart] <= cpu_state_trap;
+							ld_rs2_hart <= no_hart;
+						end
+					end
+				end
+				is_sb_sh_sw: begin
+					hart_ready[ld_rs2_hart] <= cpu_state_stmem;
+					ld_rs2_hart <= no_hart;
+					instr_do_rinst <= 1;
+				end
+				is_sll_srl_sra && !BARREL_SHIFTER: begin
+					hart_ready[ld_rs2_hart] <= cpu_state_shift;
+					ld_rs2_hart <= no_hart;
+				end
+				default: begin
+					if (TWO_CYCLE_ALU || (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu)) begin
+						alu_wait_2 <= TWO_CYCLE_ALU && (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu);
+						alu_wait <= 1;
+					end else
+						instr_do_rinst <= instr_do_prefetch;
+					hart_ready[ld_rs2_hart] <= cpu_state_exec;
+					ld_rs2_hart <= no_hart;
+				end
+			endcase
+		end
+
+		if (exec_hart != no_hart) begin
+			reg_out <= reg_pc[exec_hart] + decoded_imm;
+			if ((TWO_CYCLE_ALU || TWO_CYCLE_COMPARE) && (alu_wait || alu_wait_2)) begin
+				instr_do_rinst <= instr_do_prefetch && !alu_wait_2;
+				alu_wait <= alu_wait_2;
+			end else
+			if (is_beq_bne_blt_bge_bltu_bgeu) begin
+				latched_rd[exec_hart] <= 0;
+				latched_store <= TWO_CYCLE_COMPARE ? alu_out_0_q : alu_out_0;
+				latched_branch <= TWO_CYCLE_COMPARE ? alu_out_0_q : alu_out_0;
+				if (instr_done)
 					hart_ready[exec_hart] <= cpu_state_fetch;
 					exec_hart <= no_hart;
+				if (TWO_CYCLE_COMPARE ? alu_out_0_q : alu_out_0) begin
+					decoder_trigger <= 0;
+					set_instr_do_rinst = 1;
 				end
-			end
-
-			cpu_state_shift: begin
+			end else begin
+				latched_branch <= instr_jalr;
 				latched_store <= 1;
-				if (reg_sh == 0) begin
-					reg_out <= reg_op1;
-					instr_do_rinst <= instr_do_prefetch;
-					hart_ready[shift_hart] <= cpu_state_fetch;
-					shift_hart <= no_hart;
-				end else if (TWO_STAGE_SHIFT && reg_sh >= 4) begin
-					(* parallel_case, full_case *)
-					case (1'b1)
-						instr_slli || instr_sll: reg_op1 <= reg_op1 << 4;
-						instr_srli || instr_srl: reg_op1 <= reg_op1 >> 4;
-						instr_srai || instr_sra: reg_op1 <= $signed(reg_op1) >>> 4;
-					endcase
-					reg_sh <= reg_sh - 4;
-				end else begin
-					(* parallel_case, full_case *)
-					case (1'b1)
-						instr_slli || instr_sll: reg_op1 <= reg_op1 << 1;
-						instr_srli || instr_srl: reg_op1 <= reg_op1 >> 1;
-						instr_srai || instr_sra: reg_op1 <= $signed(reg_op1) >>> 1;
-					endcase
-					reg_sh <= reg_sh - 1;
-				end
+				latched_stalu <= 1;
+				hart_ready[exec_hart] <= cpu_state_fetch;
+				exec_hart <= no_hart;
 			end
+		end
 
-			cpu_state_stmem: begin
-				if (ENABLE_TRACE)
-					reg_out <= reg_op2;
-				if (!mem_do_wdata) begin
-					(* parallel_case, full_case *)
-					case (1'b1)
-						instr_sb: mem_wordsize <= 2;
-						instr_sh: mem_wordsize <= 1;
-						instr_sw: mem_wordsize <= 0;
-					endcase
-					if (ENABLE_TRACE) begin
-						trace_valid <= 1;
-						trace_data <= (irq_active ? TRACE_IRQ : 0) | TRACE_ADDR | ((reg_op1 + decoded_imm) & 32'hffffffff);
-					end
-					reg_op1 <= reg_op1 + decoded_imm;
-					set_mem_do_wdata = 1;
-				end
-				if (mem_done) begin
-					hart_ready[stmem_hart] <= cpu_state_fetch;
-					stmem_hart <= no_hart;
-					decoder_trigger <= 1;
-					decoder_pseudo_trigger <= 1;
-				end
-			end
-
-			cpu_state_ldmem: begin
-				latched_store <= 1;
-				if (!mem_do_rdata) begin
-					(* parallel_case, full_case *)
-					case (1'b1)
-						instr_lb || instr_lbu: mem_wordsize <= 2;
-						instr_lh || instr_lhu: mem_wordsize <= 1;
-						instr_lw: mem_wordsize <= 0;
-					endcase
-					latched_is_lu <= is_lbu_lhu_lw;
-					latched_is_lh <= instr_lh;
-					latched_is_lb <= instr_lb;
-					if (ENABLE_TRACE) begin
-						trace_valid <= 1;
-						trace_data <= (irq_active ? TRACE_IRQ : 0) | TRACE_ADDR | ((reg_op1 + decoded_imm) & 32'hffffffff);
-					end
-					reg_op1 <= reg_op1 + decoded_imm;
-					set_mem_do_rdata = 1;
-				end
+		if (shift_hart != no_hart) begin
+			latched_store <= 1;
+			if (reg_sh == 0) begin
+				reg_out <= reg_op1;
+				instr_do_rinst <= instr_do_prefetch;
+				hart_ready[shift_hart] <= cpu_state_fetch;
+				shift_hart <= no_hart;
+			end else if (TWO_STAGE_SHIFT && reg_sh >= 4) begin
 				(* parallel_case, full_case *)
 				case (1'b1)
-					latched_is_lu: reg_out <= mem_rdata_word;
-					latched_is_lh: reg_out <= $signed(mem_rdata_word[15:0]);
-					latched_is_lb: reg_out <= $signed(mem_rdata_word[7:0]);
+					instr_slli || instr_sll: reg_op1 <= reg_op1 << 4;
+					instr_srli || instr_srl: reg_op1 <= reg_op1 >> 4;
+					instr_srai || instr_sra: reg_op1 <= $signed(reg_op1) >>> 4;
 				endcase
-				if (mem_done) begin
-					decoder_trigger <= 1;
-					decoder_pseudo_trigger <= 1;
-					hart_ready[ldmem_hart] <= cpu_state_fetch;
-					ldmem_hart <= no_hart;
-				end
+				reg_sh <= reg_sh - 4;
+			end else begin
+				(* parallel_case, full_case *)
+				case (1'b1)
+					instr_slli || instr_sll: reg_op1 <= reg_op1 << 1;
+					instr_srli || instr_srl: reg_op1 <= reg_op1 >> 1;
+					instr_srai || instr_sra: reg_op1 <= $signed(reg_op1) >>> 1;
+				endcase
+				reg_sh <= reg_sh - 1;
 			end
-		endcase
+		end
+
+		if (stmem_hart != no_hart) begin
+			if (ENABLE_TRACE)
+				reg_out <= reg_op2;
+			if (!mem_do_wdata) begin
+				(* parallel_case, full_case *)
+				case (1'b1)
+					instr_sb: mem_wordsize <= 2;
+					instr_sh: mem_wordsize <= 1;
+					instr_sw: mem_wordsize <= 0;
+				endcase
+				if (ENABLE_TRACE) begin
+					trace_valid <= 1;
+					trace_data <= (irq_active ? TRACE_IRQ : 0) | TRACE_ADDR | ((reg_op1 + decoded_imm) & 32'hffffffff);
+				end
+				reg_op1 <= reg_op1 + decoded_imm;
+				set_mem_do_wdata = 1;
+			end
+			if (mem_done) begin
+				hart_ready[stmem_hart] <= cpu_state_fetch;
+				stmem_hart <= no_hart;
+				decoder_trigger <= 1;
+				decoder_pseudo_trigger <= 1;
+			end
+		end
+
+		if (ldmem_hart != no_hart) begin
+			latched_store <= 1;
+			if (!mem_do_rdata) begin
+				(* parallel_case, full_case *)
+				case (1'b1)
+					instr_lb || instr_lbu: mem_wordsize <= 2;
+					instr_lh || instr_lhu: mem_wordsize <= 1;
+					instr_lw: mem_wordsize <= 0;
+				endcase
+				latched_is_lu <= is_lbu_lhu_lw;
+				latched_is_lh <= instr_lh;
+				latched_is_lb <= instr_lb;
+				if (ENABLE_TRACE) begin
+					trace_valid <= 1;
+					trace_data <= (irq_active ? TRACE_IRQ : 0) | TRACE_ADDR | ((reg_op1 + decoded_imm) & 32'hffffffff);
+				end
+				reg_op1 <= reg_op1 + decoded_imm;
+				set_mem_do_rdata = 1;
+			end
+			(* parallel_case, full_case *)
+			case (1'b1)
+				latched_is_lu: reg_out <= mem_rdata_word;
+				latched_is_lh: reg_out <= $signed(mem_rdata_word[15:0]);
+				latched_is_lb: reg_out <= $signed(mem_rdata_word[7:0]);
+			endcase
+			if (mem_done) begin
+				decoder_trigger <= 1;
+				decoder_pseudo_trigger <= 1;
+				hart_ready[ldmem_hart] <= cpu_state_fetch;
+				ldmem_hart <= no_hart;
+			end
+		end
 
 		/* THREAD SCHEDULING */
+		// NEEDS WORK
 		for (k = 0; k <= THREADS; k = k + 1) begin
-			case (hart_ready[k]):
+			case (hart_ready[k])
 				cpu_state_trap: begin
-					cpu_state[k] <= cpu_state_trap;
 					hart_ready[k] <= cpu_state_busy;
+					trap_hart <= k;
 				end
 				cpu_state_fetch: begin
 					if (fetch_hart == no_hart) begin
-						cpu_state[k] <= cpu_state_fetch;
 						hart_ready[k] <= cpu_state_busy;
+						fetch_hart <= k;
 					end
 				end
 				cpu_state_ld_rs1: begin
 					if (ld_rs1_hart == no_hart) begin
-						cpu_state[k] <= cpu_state_ld_rs1;
 						hart_ready[k] <= cpu_state_busy;
+						ld_rs1_hart <= k;
 					end
 				end
 				cpu_state_ld_rs2: begin
 					if (ld_rs2_hart == no_hart) begin
-						cpu_state[k] <= cpu_state_ld_rs2;
 						hart_ready[k] <= cpu_state_busy;
+						ld_rs2_hart <= k;
 					end
 				end
 				cpu_state_exec: begin
 					if (exec_hart == no_hart) begin
-						cpu_state[k] <= cpu_state_exec;
 						hart_ready[k] <= cpu_state_busy;
+						exec_hart <= k;
 					end
 				end
 				cpu_state_shift: begin
 					if (shift_hart == no_hart) begin
-						cpu_state[k] <= cpu_state_shift;
 						hart_ready[k] <= cpu_state_busy;
+						shift_hart <= k;
 					end
 				end
 				cpu_state_stmem: begin
 					if (stmem_hart == no_hart) begin
-						cpu_state[k] <= cpu_state_stmem;
 						hart_ready[k] <= cpu_state_busy;
+						stmem_hart <= k;
 					end
 				end
 				cpu_state_ldmem: begin
 					if (ldmem_hart == no_hart) begin
-						cpu_state[k] <= cpu_state_ldmem;
 						hart_ready[k] <= cpu_state_busy;
+						ldmem_hart <= k;
 					end
 				end
 			endcase
@@ -2021,7 +2047,7 @@ module picorv32 #(
 					next_irq_pending[irq_buserror] = 1;
 				end else begin
 					for (k = 0; k < THREADS; k = k + 1) begin
-						cpu_state[k] <= cpu_state_trap;
+						hart_ready[k] <= cpu_state_trap;
 					end
 				end
 			end
@@ -2031,23 +2057,28 @@ module picorv32 #(
 					next_irq_pending[irq_buserror] = 1;
 				end else begin
 					for (k = 0; k < THREADS; k = k + 1) begin
-						cpu_state[k] <= cpu_state_trap;
+						hart_ready[k] <= cpu_state_trap;
+						hart_ready[k] <= cpu_state_ldmem;
 					end
 				end
 			end
 		end
+		/* TODO : reg_pc
 		if (CATCH_MISALIGN && resetn && instr_do_rinst && (COMPRESSED_ISA ? reg_pc[0] : |reg_pc[1:0])) begin
 			`debug($display("MISALIGNED INSTRUCTION: 0x%08x", reg_pc);)
 			if (ENABLE_IRQ && !irq_mask[irq_buserror] && !irq_active) begin
 				next_irq_pending[irq_buserror] = 1;
 			end else begin
 				for (k = 0; k < THREADS; k = k + 1) begin
-					cpu_state[k] <= cpu_state_trap;
+					hart_ready[k] <= cpu_state_trap;
 				end
 			end
 		end
+		*/
 		if (!CATCH_ILLINSN && decoder_trigger_q && !decoder_pseudo_trigger_q && instr_ecall_ebreak) begin
-			cpu_state <= cpu_state_trap;
+			for (k = 0; k < THREADS; k = k + 1) begin
+				hart_ready[k] <= cpu_state_trap;
+			end
 		end
 
 		if (!resetn || mem_done) begin
@@ -2070,12 +2101,14 @@ module picorv32 #(
 		irq_pending <= next_irq_pending & ~MASKED_IRQ;
 
 		if (!CATCH_MISALIGN) begin
-			if (COMPRESSED_ISA) begin
-				reg_pc[0] <= 0;
-				reg_next_pc[0] <= 0;
-			end else begin
-				reg_pc[1:0] <= 0;
-				reg_next_pc[1:0] <= 0;
+			for (k = 0; k < THREADS; k = k + 1) begin
+				if (COMPRESSED_ISA) begin
+					reg_pc[k][0] <= 0;
+					reg_next_pc[k][0] <= 0;
+				end else begin
+					reg_pc[k][1:0] <= 0;
+					reg_next_pc[k][1:0] <= 0;
+				end
 			end
 		end
 		current_pc = 'bx;
@@ -2221,6 +2254,7 @@ module picorv32 #(
 	// this just makes it much easier to read traces. uncomment as needed.
 	// assume property (mem_valid || !mem_ready);
 
+	// TODO
 	reg ok;
 	always @* begin
 		if (resetn) begin
@@ -2242,6 +2276,7 @@ module picorv32 #(
 		end
 	end
 
+	// INCLUDE INSTR LOOK AHEAD
 	reg last_mem_la_read = 0;
 	reg last_mem_la_write = 0;
 	reg [31:0] last_mem_la_addr;
