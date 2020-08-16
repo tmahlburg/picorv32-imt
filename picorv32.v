@@ -117,8 +117,8 @@ module picorv32 #(
 	input      [31:0] instr_rdata,
 
 	// Look-Ahead Interface for second RAM port -> UNDER CONSIDERATION
-	output            instr_la_read,
-	output     [31:0] instr_la_addr,
+	//output            instr_la_read,
+	//output     [31:0] instr_la_addr,
 
 	// Pico Co-Processor Interface (PCPI)
 	output reg        pcpi_valid,
@@ -230,7 +230,7 @@ module picorv32 #(
 	reg [2:0] ldmem_hart = no_hart;
 
 	// hart_ready[hart_id] == cpu_state_*, if hart_id is ready to transition to the next cpu state
-	reg [7:0] hart_ready [THREADS-1:0];
+	reg [7:0] hart_ready [0:THREADS-1];
 
 `ifndef PICORV32_REGS
 	reg [31:0] cpuregs [0:regfile_size-1];
@@ -596,9 +596,6 @@ module picorv32 #(
 			if (!resetn || instr_ready)
 				instr_valid <= 0;
 		end else begin
-			if (instr_la_read) begin
-				instr_addr <= instr_la_addr;
-			end
 			if (fetch_hart != no_hart)
 				instr_addr <= {next_pc[fetch_hart][31:2], 2'b00};
 			case (instr_state)
