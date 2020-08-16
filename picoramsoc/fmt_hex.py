@@ -103,7 +103,6 @@ if (hex_file[0] == '@'):
 
 # remove adress information (the @ parts)
 hex_file = re.sub('@[a-zA-Z0-9_]*\n', '', hex_file)
-print(hex_file)
 
 # process bytestream
 hex_file = group_by_word(word_length_in_byte,
