@@ -111,7 +111,7 @@ module picorv32 #(
 	output reg [ 3:0] mem_la_wstrb,
 
 	// Second read-only RAM port for instructions
-	output reg 		  instr_valid,
+	output /*reg*/ 		  instr_valid,
 	input 	      	  instr_ready,
 	output reg [31:0] instr_addr,
 	input      [31:0] instr_rdata,
@@ -546,6 +546,8 @@ module picorv32 #(
 	wire instr_busy = |{instr_do_prefetch, instr_do_rinst};
 	wire instr_done = resetn && ((instr_xfer && |instr_state && instr_do_rinst) || (&instr_state && instr_do_rinst));
 
+	assign instr_valid = instr_do_rinst;
+
 	//assign instr_la_read = resetn && (!instr_state && (instr_do_rinst || instr_do_prefetch)); // STILL NEEDED?
 	// TODO: think about fetch_hart != no_hart solution again
  	//assign instr_la_addr = fetch_hart != no_hart ? {next_pc[fetch_hart][31:2], 2'b00} : instr_addr;
@@ -593,8 +595,8 @@ module picorv32 #(
 		if (!resetn || trap) begin
 			if (!resetn)
 				instr_state <= 0;
-			if (!resetn || instr_ready)
-				instr_valid <= 0;
+			//if (!resetn || instr_ready)
+				//instr_valid <= 0;
 		end else begin
 			if (fetch_hart != no_hart)
 				instr_addr <= {next_pc[fetch_hart][31:2], 2'b00};
@@ -602,7 +604,7 @@ module picorv32 #(
 				0: begin
 					if (instr_do_prefetch || instr_do_rinst) begin
 						mem_instr <= instr_do_prefetch || instr_do_rinst;
-						instr_valid <= 1;
+						//instr_valid <= 1;
 						instr_state <= 1;
 					end
 				end
@@ -611,7 +613,7 @@ module picorv32 #(
 					`assert(instr_valid == 1);
 					`assert(mem_instr == (instr_do_prefetch || instr_do_rinst));
 					if (instr_xfer) begin
-						instr_valid <= 0;
+						//instr_valid <= 0;
 						instr_state <= instr_do_rinst ? 0 : 3;
 					end
 				end
@@ -1618,13 +1620,11 @@ module picorv32 #(
 						if (!ENABLE_COUNTERS64) count_instr[63:32] <= 0;
 					end
 					if (instr_jal) begin
-						instr_do_rinst <= 1;
+						//instr_do_rinst <= 1;
 						reg_next_pc[fetch_hart] <= current_pc + decoded_imm_j[fetch_hart];
 						latched_branch[fetch_hart] <= 1;
 					end else begin
 						instr_do_rinst <= 0;
-						// PREFETCH
-						//instr_do_prefetch <= !instr_jalr && !instr_retirq;
 						hart_ready[fetch_hart] = cpu_state_ld_rs1;
 						fetch_hart = no_hart;
 					end
