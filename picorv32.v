@@ -635,6 +635,8 @@ module picorv32 #(
 	reg instr_add, instr_sub, instr_sll, instr_slt, instr_sltu, instr_xor, instr_srl, instr_sra, instr_or, instr_and;
 	reg instr_rdcycle, instr_rdcycleh, instr_rdinstr, instr_rdinstrh, instr_ecall_ebreak;
 	reg instr_getq, instr_setq, instr_retirq, instr_maskirq, instr_waitirq, instr_timer;
+	// USED FOR RETURNING THE CURRENT HART_ID
+	reg instr_csrrs;
 	wire instr_trap;
 
 	reg [regindex_bits-1:0] decoded_rd [0:THREADS-1];
@@ -663,13 +665,15 @@ module picorv32 #(
 	reg is_alu_reg_reg;
 	reg is_compare;
 
+	reg is_csrrs;
+
 	assign instr_trap = (CATCH_ILLINSN || WITH_PCPI) && !{instr_lui, instr_auipc, instr_jal, instr_jalr,
 			instr_beq, instr_bne, instr_blt, instr_bge, instr_bltu, instr_bgeu,
 			instr_lb, instr_lh, instr_lw, instr_lbu, instr_lhu, instr_sb, instr_sh, instr_sw,
 			instr_addi, instr_slti, instr_sltiu, instr_xori, instr_ori, instr_andi, instr_slli, instr_srli, instr_srai,
 			instr_add, instr_sub, instr_sll, instr_slt, instr_sltu, instr_xor, instr_srl, instr_sra, instr_or, instr_and,
 			instr_rdcycle, instr_rdcycleh, instr_rdinstr, instr_rdinstrh,
-			instr_getq, instr_setq, instr_retirq, instr_maskirq, instr_waitirq, instr_timer};
+			instr_getq, instr_setq, instr_retirq, instr_maskirq, instr_waitirq, instr_timer, instr_csrrs};
 
 	wire is_rdcycle_rdcycleh_rdinstr_rdinstrh;
 	assign is_rdcycle_rdcycleh_rdinstr_rdinstrh = |{instr_rdcycle, instr_rdcycleh, instr_rdinstr, instr_rdinstrh};
@@ -741,6 +745,8 @@ module picorv32 #(
 		if (instr_maskirq)  new_ascii_instr = "maskirq";
 		if (instr_waitirq)  new_ascii_instr = "waitirq";
 		if (instr_timer)    new_ascii_instr = "timer";
+
+		if (instr_csrrs)	new_ascii_instr = "csrrs";
 	end
 
 	reg [63:0] q_ascii_instr;
@@ -841,6 +847,8 @@ module picorv32 #(
 	end
 `endif
 
+	reg csr_unknown = 0;
+
 	always @(posedge clk) begin
 		is_lbu_lhu_lw <= |{instr_lbu, instr_lhu, instr_lw};
 
@@ -851,6 +859,8 @@ module picorv32 #(
 			instr_jalr    <= instr_rdata_latched[6:0] == 7'b1100111 && instr_rdata_latched[14:12] == 3'b000;
 			instr_retirq  <= instr_rdata_latched[6:0] == 7'b0001011 && instr_rdata_latched[31:25] == 7'b0000010 && ENABLE_IRQ;
 			instr_waitirq <= instr_rdata_latched[6:0] == 7'b0001011 && instr_rdata_latched[31:25] == 7'b0000100 && ENABLE_IRQ;
+
+			instr_csrrs   <= instr_rdata_latched[6:0] == 7'b1110011 && instr_rdata_latched[14:12] == 3'b010;
 
 			is_beq_bne_blt_bge_bltu_bgeu <= instr_rdata_latched[6:0] == 7'b1100011;
 			is_lb_lh_lw_lbu_lhu          <= instr_rdata_latched[6:0] == 7'b0000011;
@@ -1102,17 +1112,18 @@ module picorv32 #(
 			case (1'b1)
 				instr_jal:
 					decoded_imm[fetch_hart] <= decoded_imm_j[fetch_hart];
-				|{instr_lui, instr_auipc}: begin
+				|{instr_lui, instr_auipc}:
 					decoded_imm[fetch_hart] <= instr_rdata_q[31:12] << 12;
-					$display("***************");
-					$display("%b, %b, %b, %h, %h, %h", instr_rdata_q, instr_rdata_q[31:12], (instr_rdata_q[31:12] << 12), instr_rdata_q, instr_rdata_q[31:12], instr_rdata_q[31:12] << 12);
-					$display("***************"); end
 				|{instr_jalr, is_lb_lh_lw_lbu_lhu, is_alu_reg_imm}:
 					decoded_imm[fetch_hart] <= $signed(instr_rdata_q[31:20]);
 				is_beq_bne_blt_bge_bltu_bgeu:
 					decoded_imm[fetch_hart] <= $signed({instr_rdata_q[31], instr_rdata_q[7], instr_rdata_q[30:25], instr_rdata_q[11:8], 1'b0});
 				is_sb_sh_sw:
 					decoded_imm[fetch_hart] <= $signed({instr_rdata_q[31:25], instr_rdata_q[11:7]});
+				is_csrrs:
+					// only handle requests for the mhartid csr
+					if (instr_rdata_q[31:20] != 'hf14)
+						csr_unknown <= 1;
 				default:
 					decoded_imm[fetch_hart] <= 1'bx;
 			endcase
@@ -1146,7 +1157,11 @@ module picorv32 #(
 			instr_sra   <= 0;
 			instr_or    <= 0;
 			instr_and   <= 0;
+
+			instr_csrrs <= 0;
 		end
+
+		is_csrrs <= instr_csrrs;
 
 		is_lui_auipc_jal <= |{instr_lui, instr_auipc, instr_jal};
 		is_lui_auipc_jal_jalr_addi_add_sub <= |{instr_lui, instr_auipc, instr_jal, instr_jalr, instr_addi, instr_add, instr_sub};
@@ -1430,8 +1445,6 @@ module picorv32 #(
 	integer k;
 	/* MAIN CPU LOOP */
 	always @(posedge clk) begin
-		for (k = 0; k < THREADS; k = k + 1)
-			$display("hart_ready[%0d]: %x", k, hart_ready[k]);
 		trap <= 0;
 		set_instr_do_rinst = 0;
 		set_mem_do_rdata = 0;
@@ -1532,20 +1545,16 @@ module picorv32 #(
 				instr_do_rinst <= !decoder_trigger && !do_waitirq;
 				instr_wordsize <= 0;
 
-				$display("1: %x %x", current_pc, reg_next_pc[fetch_hart]);
 				current_pc = reg_next_pc[fetch_hart];
 
 				(* parallel_case *)
 				case (1'b1)
 					latched_branch[fetch_hart]: begin
-						$display("%0d %0d %0d", latched_store[fetch_hart], latched_stalu[fetch_hart], alu_out_q[fetch_hart]);
 						current_pc = latched_store[fetch_hart] ? (latched_stalu[fetch_hart] ? alu_out_q[fetch_hart] : reg_out[fetch_hart]) & ~1 : reg_next_pc[fetch_hart];
 						`debug($display("ST_RD:  %2d 0x%08x, BRANCH 0x%08x", latched_rd[fetch_hart], reg_pc + (latched_compr ? 2 : 4), current_pc);)
-						$display("2: %x %x %x %x", current_pc, reg_next_pc[fetch_hart], reg_out[fetch_hart], reg_out[fetch_hart] & ~1);
 					end
 					latched_store[fetch_hart] && !latched_branch[fetch_hart]: begin
 						`debug($display("ST_RD:  %2d 0x%08x", latched_rd[fetch_hart], latched_stalu[fetch_hart] ? alu_out_q[fetch_hart] : reg_out[fetch_hart]);)
-						$display("3: %x %x", current_pc, reg_next_pc[fetch_hart]);
 					end
 					ENABLE_IRQ && irq_state[0]: begin
 						current_pc[fetch_hart] = PROGADDR_IRQ;
@@ -1569,7 +1578,6 @@ module picorv32 #(
 
 				reg_pc[fetch_hart] <= current_pc;
 				reg_next_pc[fetch_hart] <= current_pc;
-				$display("4: %x %x", current_pc, reg_next_pc[fetch_hart]);
 
 				latched_store[fetch_hart] <= 0;
 				latched_stalu[fetch_hart] <= 0;
@@ -1603,7 +1611,6 @@ module picorv32 #(
 					`debug($display("-- %-0t", $time);)
 					irq_delay <= irq_active;
 					reg_next_pc[fetch_hart] <= current_pc + (compressed_instr ? 2 : 4);
-					$display("5: %x %x", current_pc, reg_next_pc[fetch_hart]);
 					if (ENABLE_TRACE)
 						latched_trace <= 1;
 					if (ENABLE_COUNTERS) begin
@@ -1613,7 +1620,6 @@ module picorv32 #(
 					if (instr_jal) begin
 						instr_do_rinst <= 1;
 						reg_next_pc[fetch_hart] <= current_pc + decoded_imm_j[fetch_hart];
-						$display("5: %x %x", current_pc, reg_next_pc[fetch_hart]);
 						latched_branch[fetch_hart] <= 1;
 					end else begin
 						instr_do_rinst <= 0;
@@ -1896,7 +1902,8 @@ module picorv32 #(
 							alu_wait_2 <= TWO_CYCLE_ALU && (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu);
 							alu_wait <= 1;
 						end else
-							instr_do_rinst <= instr_do_prefetch;
+							// TODO: PREFETCH
+							//instr_do_rinst <= instr_do_prefetch;
 						hart_ready[ld_rs2_hart] = cpu_state_exec;
 						ld_rs2_hart = no_hart;
 					end
@@ -1906,32 +1913,28 @@ module picorv32 #(
 			if (exec_hart != no_hart) begin
 				reg_out[exec_hart] <= reg_pc[exec_hart] + decoded_imm[exec_hart];
 				if ((TWO_CYCLE_ALU || TWO_CYCLE_COMPARE) && (alu_wait || alu_wait_2)) begin
-					instr_do_rinst <= instr_do_prefetch && !alu_wait_2;
+					// TODO: PREFETCH
+					//instr_do_rinst <= instr_do_prefetch && !alu_wait_2;
 					alu_wait <= alu_wait_2;
 				end else
 				if (is_beq_bne_blt_bge_bltu_bgeu) begin
 					latched_rd[exec_hart] <= 0;
 					latched_store[exec_hart] <= TWO_CYCLE_COMPARE ? alu_out_0_q[exec_hart] : alu_out_0[exec_hart];
 					latched_branch[exec_hart] <= TWO_CYCLE_COMPARE ? alu_out_0_q[exec_hart] : alu_out_0[exec_hart];
-					if (instr_done)
-						$display("INSTR_DONE");
-						hart_ready[exec_hart] = cpu_state_fetch;
-						$display("HART_READY");
-						exec_hart = no_hart;
-						$display("HART_SWITCH");
-					if (TWO_CYCLE_COMPARE ? alu_out_0_q[exec_hart] : alu_out_0[exec_hart]) begin
-						decoder_trigger <= 0;
-						set_instr_do_rinst = 1;
-					end
+					// HANDLE TWO_CYCLE_COMPARE
+					hart_ready[exec_hart] = cpu_state_fetch;
+					exec_hart = no_hart;
+				end else if (is_csrrs) begin
+					reg_out[exec_hart] <= exec_hart;
+					latched_store[exec_hart] <= 1;
+					hart_ready[exec_hart] = cpu_state_fetch;
+					exec_hart = no_hart;
 				end else begin
 					latched_branch[exec_hart] <= instr_jalr;
 					latched_store[exec_hart] <= 1;
 					latched_stalu[exec_hart] <= 1;
-					$display("NO_CMP");
 					hart_ready[exec_hart] = cpu_state_fetch;
-					$display("HART_READY");
 					exec_hart = no_hart;
-					$display("HART_SWITCH");
 				end
 			end
 
@@ -2024,7 +2027,6 @@ module picorv32 #(
 				end
 			end
 		end
-
 
 		/* THREAD SCHEDULING */
 		/* blocking assignments are intentional */
@@ -2123,6 +2125,12 @@ module picorv32 #(
 		end
 		*/
 		if (!CATCH_ILLINSN && decoder_trigger_q && !decoder_pseudo_trigger_q && instr_ecall_ebreak) begin
+			for (k = 0; k < THREADS; k = k + 1) begin
+				hart_ready[k] = cpu_state_trap;
+			end
+		end
+
+		if (csr_unknown) begin
 			for (k = 0; k < THREADS; k = k + 1) begin
 				hart_ready[k] = cpu_state_trap;
 			end
