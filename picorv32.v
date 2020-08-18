@@ -113,7 +113,7 @@ module picorv32 #(
 	// Second read-only RAM port for instructions
 	output /*reg*/ 		  instr_valid,
 	input 	      	  instr_ready,
-	output reg [31:0] instr_addr,
+	output /*reg*/ [31:0] instr_addr,
 	input      [31:0] instr_rdata,
 
 	// Look-Ahead Interface for second RAM port -> UNDER CONSIDERATION
@@ -537,6 +537,8 @@ module picorv32 #(
 	reg instr_do_prefetch;
 	reg instr_do_rinst;
 
+	reg [31:0] instr_addr_q;
+
 	wire instr_xfer;
 
 	wire [31:0] instr_rdata_latched;
@@ -553,6 +555,8 @@ module picorv32 #(
  	//assign instr_la_addr = fetch_hart != no_hart ? {next_pc[fetch_hart][31:2], 2'b00} : instr_addr;
 
 	assign instr_rdata_latched = (instr_xfer || LATCHED_MEM_RDATA) ? instr_rdata : instr_rdata_q;
+
+	assign instr_addr = fetch_hart != no_hart ? {next_pc[fetch_hart][31:2], 2'b00} : instr_addr_q;
 
 	always @* begin
 		(* full_case *)
@@ -598,8 +602,7 @@ module picorv32 #(
 			//if (!resetn || instr_ready)
 				//instr_valid <= 0;
 		end else begin
-			if (fetch_hart != no_hart)
-				instr_addr <= {next_pc[fetch_hart][31:2], 2'b00};
+			instr_addr_q <= instr_addr;
 			case (instr_state)
 				0: begin
 					if (instr_do_prefetch || instr_do_rinst) begin
@@ -1544,7 +1547,7 @@ module picorv32 #(
 				trap <= 1;
 
 			if (fetch_hart != no_hart) begin
-				instr_do_rinst <= !decoder_trigger && !do_waitirq;
+				instr_do_rinst <= /*!decoder_trigger &&*/ !do_waitirq;
 				instr_wordsize <= 0;
 
 				current_pc = reg_next_pc[fetch_hart];
@@ -2041,6 +2044,13 @@ module picorv32 #(
 					if (fetch_hart == no_hart) begin
 						hart_ready[k] = cpu_state_busy;
 						fetch_hart = k;
+						instr_do_rinst <= !do_waitirq;
+					end
+				end
+				cpu_state_decode: begin
+					if (decoder_hart == no_hart) begin
+						hart_ready[k] = cpu_state_busy;
+						decoder_hart = k;
 					end
 				end
 				cpu_state_ld_rs1: begin
