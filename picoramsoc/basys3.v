@@ -37,12 +37,12 @@ module basys3(
        .CLKFBOUT_PHASE(0.0),     // Phase offset in degrees of CLKFB, (-360.000-360.000).
        .CLKIN1_PERIOD(10),      // Input clock period in ns to ps resolution (i.e. 33.333 is 30 MHz).
        // CLKOUT0_DIVIDE - CLKOUT5_DIVIDE: Divide amount for each CLKOUT (1-128)
-       .CLKOUT0_DIVIDE(16),
-       .CLKOUT1_DIVIDE(16),
-       .CLKOUT2_DIVIDE(16),
-       .CLKOUT3_DIVIDE(16),
-       .CLKOUT4_DIVIDE(16),
-       .CLKOUT5_DIVIDE(16),
+       .CLKOUT0_DIVIDE(80),
+       .CLKOUT1_DIVIDE(80),
+       .CLKOUT2_DIVIDE(80),
+       .CLKOUT3_DIVIDE(80),
+       .CLKOUT4_DIVIDE(80),
+       .CLKOUT5_DIVIDE(80),
        // CLKOUT0_DUTY_CYCLE - CLKOUT5_DUTY_CYCLE: Duty cycle for each CLKOUT (0.001-0.999).
        .CLKOUT0_DUTY_CYCLE(0.5),
        .CLKOUT1_DUTY_CYCLE(0.5),
