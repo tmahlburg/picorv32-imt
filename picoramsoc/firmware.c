@@ -20,26 +20,25 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#ifdef ICEBREAKER
-#  define MEM_TOTAL 0x20000 /* 128 KB */
-#elif HX8KDEMO
-#  define MEM_TOTAL 0x200 /* 2 KB */
-#elif BASYS3
+#ifdef BASYS3
 #  define MEM_TOTAL 0x4000 /* 16 KB */
 #else
-#  error "Set -DICEBREAKER or -DHX8KDEMO or -DBASYS3 when compiling firmware.c"
+#  error "Set -DBASYS3 when compiling firmware.c"
 #endif
 
 // a pointer to this is a null pointer, but the compiler does not
 // know that because "sram" is a linker symbol from sections.lds.
 extern uint32_t sram;
 
-#define reg_spictrl (*(volatile uint32_t*)0x02000000)
 #define reg_uart_clkdiv (*(volatile uint32_t*)0x02000004)
 #define reg_uart_data (*(volatile uint32_t*)0x02000008)
 #define reg_leds (*(volatile uint32_t*)0x03000000)
+#define THREAD_COUNT 2
 
 // --------------------------------------------------------
+
+int lock;
+int counter;
 
 void putchar(char c)
 {
@@ -148,32 +147,42 @@ void cmd_echo()
 
 void main()
 {
-	reg_leds = 31;
-#ifndef BASYS3
-	reg_uart_clkdiv = 104;
-#else
-    reg_uart_clkdiv = 434;
-#endif
-	print("Booting..\n");
+    lock = 1;
+    reg_leds = 31;
+    __asm__("csrr t0, 0xF14\n\t"
+            "bnez t0, .ID_NEQ_0\n\t"
+            "j .THREAD_0\n"
+            ".ID_NEQ_0:\n\t"
+            "li t1, 1\n\t"
+            "bne t0, t1, .ID_NEQ_1\n\t"
+            "j .THREAD_1\n"
+            ".ID_NEQ_1:\n\t"
+            "j .DONE\n");
+    
+    __asm__(".THREAD_0:\n\t");
 
-	reg_leds = 63;
+    reg_uart_clkdiv = 87;
+    reg_leds = 0;
+    
+    print("running thread 0");
 
-	reg_leds = 127;
-	while (getchar_prompt("Press ENTER to continue..\n") != '\r') { /* wait */ }
-
-	print("\n");
-	print("  ____  _          ____         ____\n");
-	print(" |  _ \\(_) ___ ___/ ___|  ___  / ___|\n");
-	print(" | |_) | |/ __/ _ \\___ \\ / _ \\| |\n");
-	print(" |  __/| | (_| (_) |__) | (_) | |___\n");
-	print(" |_|   |_|\\___\\___/____/ \\___/ \\____|\n");
-	print("\n");
-
-	print("Total memory: ");
-	print_dec(MEM_TOTAL / 1024);
-	print(" KiB\n");
-	print("\n");
-
-	print("This is a simple test firmware.\n");
-    print("It doesn't do anything :/.\n");
+    lock = 0;
+    __asm__("j .DONE\n");
+    
+    __asm__(".THREAD_1:\n\t");
+    
+    int counter = 0;
+    while (lock != 0) {
+        counter++;
+    }
+    lock = 1;
+    reg_leds = 1;
+    print("running thread 1");
+    lock = 0;
+    
+    __asm__(".DONE:\n\t");
+    print("work done");
+    while(1) {
+        __asm__("nop\n\t");
+    }
 }
