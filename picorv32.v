@@ -365,7 +365,6 @@ module picorv32 #(
 	reg [1:0] instr_state;
 	reg [31:0] instr_rdata_word;
 	reg [31:0] instr_rdata_q;
-	reg instr_do_prefetch;
 	reg instr_do_rinst;
 
 	reg [31:0] instr_addr_q;
@@ -376,8 +375,8 @@ module picorv32 #(
 
 	assign instr_xfer = instr_valid && instr_ready;
 
-	wire instr_busy = |{instr_do_prefetch, instr_do_rinst};
-	wire instr_done = resetn && ((instr_xfer && |instr_state && instr_do_rinst) || (&instr_state && instr_do_rinst));
+	wire instr_busy = instr_do_rinst;
+	wire instr_done = resetn && (instr_xfer && |instr_state && instr_do_rinst);
 
 	assign instr_valid = instr_do_rinst;
 
@@ -397,13 +396,6 @@ module picorv32 #(
 	end
 
 	always @(posedge clk) begin
-		if (resetn && !trap) begin
-			if (instr_state == 3)
-				`assert(instr_valid || instr_do_prefetch);
-		end
-	end
-
-	always @(posedge clk) begin
 		if (!resetn || trap) begin
 			if (!resetn)
 				instr_state <= 0;
@@ -411,22 +403,16 @@ module picorv32 #(
 			instr_addr_q <= instr_addr;
 			case (instr_state)
 				0: begin
-					if (instr_do_prefetch || instr_do_rinst) begin
-						mem_instr <= instr_do_prefetch || instr_do_rinst;
+					if (instr_do_rinst) begin
+						mem_instr <= instr_do_rinst;
 						instr_state <= 1;
 					end
 				end
 				1: begin
-					`assert(instr_do_prefetch || instr_do_rinst);
+					`assert(instr_do_rinst);
 					`assert(instr_valid == 1);
-					`assert(mem_instr == (instr_do_prefetch || instr_do_rinst));
+					`assert(mem_instr == (instr_do_rinst));
 					if (instr_xfer) begin
-						instr_state <= instr_do_rinst ? 0 : 3;
-					end
-				end
-				3: begin
-					`assert(instr_do_prefetch);
-					if (instr_do_rinst) begin
 						instr_state <= 0;
 					end
 				end
@@ -1042,6 +1028,7 @@ module picorv32 #(
 				end
 			end
 			fetch_hart = 0;
+			hart_counter = 1;
 			hart_ready[0] = cpu_state_busy;
 			for (k = 1; k < THREADS; k = k + 1)
 				hart_ready[k] = cpu_state_fetch;
@@ -1552,7 +1539,6 @@ module picorv32 #(
 		end
 
 		if (!resetn || instr_done) begin
-			instr_do_prefetch <= 0;
 			instr_do_rinst <= 0;
 		end
 
