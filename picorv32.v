@@ -204,6 +204,8 @@ module picorv32 #(
 	// hart_ready[hart_id] == cpu_state_*, if hart_id is ready to transition to the next cpu state
 	reg [7:0] hart_ready [0:THREADS-1];
 
+	reg [7:0] hart_counter;
+
 	task empty_statement;
 		// This task is used by the `assert directive in non-formal mode to
 		// avoid empty statement (which are unsupported by plain Verilog syntax).
@@ -1421,20 +1423,21 @@ module picorv32 #(
 		end
 
 		/* THREAD SCHEDULING */
+
+		/* This part is making the scheduling fair, by actually alternating the thread allowed to fetch using the hart_counter */
+		if (hart_ready[hart_counter] == cpu_state_fetch && fetch_hart == no_hart) begin
+			hart_ready[hart_counter] = cpu_state_busy;
+			fetch_hart = hart_counter;
+			hart_counter = hart_counter + 1;
+			instr_do_rinst <= !do_waitirq;
+		end
+
 		/* blocking assignments are intentional */
-		/* STILL NEEDS TO BE MADE COMPLETELY FAIR */
 		for (k = 0; k < THREADS; k = k + 1) begin
 			case (hart_ready[k])
 				cpu_state_trap: begin
 					hart_ready[k] = cpu_state_busy;
 					trap_hart = k;
-				end
-				cpu_state_fetch: begin
-					if (fetch_hart == no_hart) begin
-						hart_ready[k] = cpu_state_busy;
-						fetch_hart = k;
-						instr_do_rinst <= !do_waitirq;
-					end
 				end
 				cpu_state_ld_rs1: begin
 					// TODO: ld_rs2_hart
@@ -1475,6 +1478,10 @@ module picorv32 #(
 					end
 				end
 			endcase
+		end
+
+		if (hart_counter >= THREADS) begin
+			hart_counter = 0;
 		end
 
 		// TODO: IRQ
