@@ -363,7 +363,6 @@ module picorv32 #(
 
 	// instruction memory interface
 	reg [1:0] instr_state;
-	reg [1:0] instr_wordsize;
 	reg [31:0] instr_rdata_word;
 	reg [31:0] instr_rdata_q;
 	reg instr_do_prefetch;
@@ -387,26 +386,7 @@ module picorv32 #(
 	assign instr_addr = fetch_hart != no_hart ? {next_pc[fetch_hart][31:2], 2'b00} : instr_addr_q;
 
 	always @* begin
-		(* full_case *)
-		case (instr_wordsize)
-			0: begin
-				instr_rdata_word = instr_rdata;
-			end
-			1: begin
-				case (reg_op1[fetch_hart][1])
-					1'b0: instr_rdata_word = {16'b0, instr_rdata[15: 0]};
-					1'b1: instr_rdata_word = {16'b0, instr_rdata[31:16]};
-				endcase
-			end
-			2: begin
-				case (reg_op1[fetch_hart][1:0])
-					2'b00: instr_rdata_word = {24'b0, instr_rdata[ 7: 0]};
-					2'b01: instr_rdata_word = {24'b0, instr_rdata[15: 8]};
-					2'b10: instr_rdata_word = {24'b0, instr_rdata[23:16]};
-					2'b11: instr_rdata_word = {24'b0, instr_rdata[31:24]};
-				endcase
-			end
-		endcase
+		instr_rdata_word = instr_rdata;
 	end
 
 	always @(posedge clk) begin
@@ -1072,7 +1052,6 @@ module picorv32 #(
 
 			if (fetch_hart != no_hart) begin
 				instr_do_rinst <= !do_waitirq;
-				instr_wordsize <= 0;
 
 				current_pc = reg_next_pc[fetch_hart];
 
