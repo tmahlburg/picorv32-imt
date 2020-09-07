@@ -1,31 +1,4 @@
 `timescale 1ns / 1ps
-//////////////////////////////////////////////////////////////////////////////////
-// Company:
-// Engineer:
-//
-// Create Date: 16.06.2020 14:40:22
-// Design Name:
-// Module Name: picoramsoc
-// Project Name:
-// Target Devices:
-// Tool Versions:
-// Description:
-//
-// Dependencies:
-//
-// Revision:
-// Revision 0.01 - File Created
-// Additional Comments:
-//
-//////////////////////////////////////////////////////////////////////////////////
-
-`ifndef PICORV32_REGS
-`ifdef PICORV32_V
-//`error "picosoc.v must be read before picorv32.v!"
-`endif
-
-`define PICORV32_REGS picoramsoc_regs
-`endif
 
 `ifndef PICORAMSOC_MEM
 `define PICORAMSOC_MEM picoramsoc_mem
@@ -176,27 +149,6 @@ module picoramsoc(
 	);
 endmodule
 
-// Implementation note:
-// Replace the following two modules with wrappers for your SRAM cells.
-
-module picoramsoc_regs (
-	input clk, wen,
-	input [5:0] waddr,
-	input [5:0] raddr1,
-	input [5:0] raddr2,
-	input [31:0] wdata,
-	output [31:0] rdata1,
-	output [31:0] rdata2
-	);
-	reg [31:0] regs [0:31];
-
-	always @(posedge clk)
-	    if (wen) regs[waddr[4:0]] <= wdata;
-
-	assign rdata1 = regs[raddr1[4:0]];
-	assign rdata2 = regs[raddr2[4:0]];
-endmodule
-
 module picoramsoc_mem #(
 	parameter integer WORDS = 256
 	) (
@@ -211,8 +163,9 @@ module picoramsoc_mem #(
 	reg [31:0] mem [0:WORDS-1];
 
 	initial begin
-		$readmemh("firmware.hex", mem);
+		$readmemh("basys3_fw.hex", mem);
 	end
+
 	always @(posedge clk) begin
 	    rdata1 <= mem[addr1];
 	    if (wen[0]) mem[addr1][ 7: 0] <= wdata[ 7: 0];

@@ -1,7 +1,7 @@
 /*
- *  PicoRV32 -- A Small RISC-V (RV32I) Processor Core
+ *  PicoRV32-imt -- A Small RISC-V (RV32I) Processor Core extended with Interleaved Multithreading
  *
- *  Copyright (C) 2015  Clifford Wolf <clifford@clifford.at>
+ *  Copyright (C) 2020  Till Mahlburg
  *
  *  Permission to use, copy, modify, and/or distribute this software for any
  *  purpose with or without fee is hereby granted, provided that the above
@@ -47,9 +47,8 @@
   `define assert(assert_expr) empty_statement
 `endif
 
-// TO BE REVIEWED
 // uncomment this for register file in extra module
-// `define PICORV32_REGS picorv32_regs
+`define PICORV32_REGS picorv32_regs
 
 // this macro can be used to check if the verilog files in your
 // design are read in the correct order.
@@ -204,18 +203,6 @@ module picorv32 #(
 
 	// hart_ready[hart_id] == cpu_state_*, if hart_id is ready to transition to the next cpu state
 	reg [7:0] hart_ready [0:THREADS-1];
-
-	//TODO PICORV32_REGS
-`ifndef PICORV32_REGS
-	reg [31:0] cpuregs [0:regfile_size-1];
-	integer i;
-	initial begin
-		if (REGS_INIT_ZERO) begin
-			for (i = 0; i < regfile_size; i = i+1)
-				cpuregs[i] = 0;
-		end
-	end
-`endif
 
 	task empty_statement;
 		// This task is used by the `assert directive in non-formal mode to
@@ -1857,8 +1844,8 @@ module picorv32_regs (
 	reg [31:0] regs [0:30];
 
 	always @(posedge clk)
-		if (wen) regs[~waddr[4:0]] <= wdata;
+		if (wen) regs[waddr[4:0]] <= wdata;
 
-	assign rdata1 = regs[~raddr1[4:0]];
-	assign rdata2 = regs[~raddr2[4:0]];
+	assign rdata1 = regs[raddr1[4:0]];
+	assign rdata2 = regs[raddr2[4:0]];
 endmodule
