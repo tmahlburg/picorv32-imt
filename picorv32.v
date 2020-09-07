@@ -70,7 +70,6 @@ module picorv32 #(
 	parameter [ 0:0] BARREL_SHIFTER = 0,
 	parameter [ 0:0] TWO_CYCLE_COMPARE = 0,
 	parameter [ 0:0] TWO_CYCLE_ALU = 0,
-	parameter [ 0:0] COMPRESSED_ISA = 0,
 	parameter [ 0:0] CATCH_MISALIGN = 1,
 	parameter [ 0:0] CATCH_ILLINSN = 1,
 	parameter [ 0:0] ENABLE_IRQ = 0,
@@ -270,14 +269,6 @@ module picorv32 #(
 	reg mem_do_wdata;
 
 	wire mem_xfer;
-	reg mem_la_secondword;
-
-	reg prefetched_high_word;
-	reg clear_prefetched_high_word;
-	reg [15:0] mem_16bit_buffer;
-
-	wire [31:0] mem_rdata_latched_noshuffle;
-	wire [31:0] mem_rdata_latched;
 
 	assign mem_xfer = mem_valid && mem_ready;
 
@@ -288,12 +279,6 @@ module picorv32 #(
 	assign mem_la_read = resetn && (!mem_state && mem_do_rdata);
 	assign mem_la_addr = mem_do_rdata ? {reg_op1[ldmem_hart][31:2], 2'b00} :
 		mem_do_wdata ? {reg_op1[stmem_hart][31:2], 2'b00} : mem_addr;
-
-	assign mem_rdata_latched_noshuffle = (mem_xfer || LATCHED_MEM_RDATA) ? mem_rdata : mem_rdata_q;
-
-	// TODO: COMPRESSED_ISA
-	assign mem_rdata_latched = COMPRESSED_ISA && mem_la_secondword ? {mem_rdata_latched_noshuffle[15:0], mem_16bit_buffer} :
-			mem_rdata_latched_noshuffle;
 
 	always @* begin
 		(* full_case *)
@@ -324,11 +309,9 @@ module picorv32 #(
 		endcase
 	end
 
-	// TODO: COMPRESSED_ISA
 	always @(posedge clk) begin
 		if (mem_xfer) begin
-			mem_rdata_q <= COMPRESSED_ISA ? mem_rdata_latched : mem_rdata;
-			next_insn_opcode <= COMPRESSED_ISA ? mem_rdata_latched : mem_rdata;
+			mem_rdata_q <= mem_rdata;
 		end
 	end
 
@@ -349,8 +332,6 @@ module picorv32 #(
 				mem_state <= 0;
 			if (!resetn || mem_ready)
 				mem_valid <= 0;
-			mem_la_secondword <= 0;
-			prefetched_high_word <= 0;
 		end else begin
 			if (mem_la_read || mem_la_write) begin
 				mem_addr <= mem_la_addr;
@@ -377,24 +358,8 @@ module picorv32 #(
 					`assert(mem_do_rdata);
 					`assert(mem_valid);
 					if (mem_xfer) begin
-						//TODO COMPRESSED_ISA
-						if (COMPRESSED_ISA && mem_la_read) begin
-							mem_valid <= 1;
-							mem_la_secondword <= 1;
-							mem_16bit_buffer <= mem_rdata[31:16];
-						end else begin
-							mem_valid <= 0;
-							mem_la_secondword <= 0;
-							if (COMPRESSED_ISA && !mem_do_rdata) begin
-								if (~&mem_rdata[1:0] || mem_la_secondword) begin
-									mem_16bit_buffer <= mem_rdata[31:16];
-									prefetched_high_word <= 1;
-								end else begin
-									prefetched_high_word <= 0;
-								end
-							end
-							mem_state <= 0;
-						end
+						mem_valid <= 0;
+						mem_state <= 0;
 					end
 				end
 				2: begin
@@ -407,9 +372,6 @@ module picorv32 #(
 				end
 			endcase
 		end
-
-		if (clear_prefetched_high_word)
-			prefetched_high_word <= 0;
 	end
 
 	// instruction memory interface
@@ -528,7 +490,6 @@ module picorv32 #(
 	reg decoder_trigger_q;
 	reg decoder_pseudo_trigger;
 	reg decoder_pseudo_trigger_q;
-	reg compressed_instr;
 
 	reg is_lui_auipc_jal;
 	reg is_lb_lh_lw_lbu_lhu;
@@ -683,152 +644,6 @@ module picorv32 #(
 
 			if (instr_rdata_latched[6:0] == 7'b0001011 && instr_rdata_latched[31:25] == 7'b0000010 && ENABLE_IRQ)
 				decoded_rs1[fetch_hart] <= ENABLE_IRQ_QREGS ? irqregs_offset : 3; // instr_retirq
-
-			// TO DELETE, IF COMPRESSED_ISA GETS DELETED
-			compressed_instr <= 0;
-			if (COMPRESSED_ISA && mem_rdata_latched[1:0] != 2'b11) begin
-				compressed_instr <= 1;
-				decoded_rd[fetch_hart] <= 0;
-				decoded_rs1[fetch_hart] <= 0;
-				decoded_rs2[fetch_hart] <= 0;
-
-				{ decoded_imm_j[fetch_hart][31:11], decoded_imm_j[fetch_hart][4], decoded_imm_j[fetch_hart][9:8], decoded_imm_j[fetch_hart][10], decoded_imm_j[fetch_hart][6],
-				  decoded_imm_j[fetch_hart][7], decoded_imm_j[fetch_hart][3:1], decoded_imm_j[fetch_hart][5], decoded_imm_j[fetch_hart][0] } <= $signed({mem_rdata_latched[12:2], 1'b0});
-
-				case (mem_rdata_latched[1:0])
-					2'b00: begin // Quadrant 0
-						case (mem_rdata_latched[15:13])
-							3'b000: begin // C.ADDI4SPN
-								is_alu_reg_imm <= |mem_rdata_latched[12:5];
-								decoded_rs1[fetch_hart] <= 2;
-								decoded_rd[fetch_hart] <= 8 + mem_rdata_latched[4:2];
-							end
-							3'b010: begin // C.LW
-								is_lb_lh_lw_lbu_lhu <= 1;
-								decoded_rs1[fetch_hart] <= 8 + mem_rdata_latched[9:7];
-								decoded_rd[fetch_hart] <= 8 + mem_rdata_latched[4:2];
-							end
-							3'b110: begin // C.SW
-								is_sb_sh_sw <= 1;
-								decoded_rs1[fetch_hart] <= 8 + mem_rdata_latched[9:7];
-								decoded_rs2[fetch_hart] <= 8 + mem_rdata_latched[4:2];
-							end
-						endcase
-					end
-					2'b01: begin // Quadrant 1
-						case (mem_rdata_latched[15:13])
-							3'b000: begin // C.NOP / C.ADDI
-								is_alu_reg_imm <= 1;
-								decoded_rd[fetch_hart] <= mem_rdata_latched[11:7];
-								decoded_rs1[fetch_hart] <= mem_rdata_latched[11:7];
-							end
-							3'b001: begin // C.JAL
-								instr_jal <= 1;
-								decoded_rd[fetch_hart] <= 1;
-							end
-							3'b 010: begin // C.LI
-								is_alu_reg_imm <= 1;
-								decoded_rd[fetch_hart] <= mem_rdata_latched[11:7];
-								decoded_rs1[fetch_hart] <= 0;
-							end
-							3'b 011: begin
-								if (mem_rdata_latched[12] || mem_rdata_latched[6:2]) begin
-									if (mem_rdata_latched[11:7] == 2) begin // C.ADDI16SP
-										is_alu_reg_imm <= 1;
-										decoded_rd[fetch_hart] <= mem_rdata_latched[11:7];
-										decoded_rs1[fetch_hart] <= mem_rdata_latched[11:7];
-									end else begin // C.LUI
-										instr_lui <= 1;
-										decoded_rd[fetch_hart] <= mem_rdata_latched[11:7];
-										decoded_rs1[fetch_hart] <= 0;
-									end
-								end
-							end
-							3'b100: begin
-								if (!mem_rdata_latched[11] && !mem_rdata_latched[12]) begin // C.SRLI, C.SRAI
-									is_alu_reg_imm <= 1;
-									decoded_rd[fetch_hart] <= 8 + mem_rdata_latched[9:7];
-									decoded_rs1[fetch_hart] <= 8 + mem_rdata_latched[9:7];
-									decoded_rs2[fetch_hart] <= {mem_rdata_latched[12], mem_rdata_latched[6:2]};
-								end
-								if (mem_rdata_latched[11:10] == 2'b10) begin // C.ANDI
-									is_alu_reg_imm <= 1;
-									decoded_rd[fetch_hart] <= 8 + mem_rdata_latched[9:7];
-									decoded_rs1[fetch_hart] <= 8 + mem_rdata_latched[9:7];
-								end
-								if (mem_rdata_latched[12:10] == 3'b011) begin // C.SUB, C.XOR, C.OR, C.AND
-									is_alu_reg_reg <= 1;
-									decoded_rd[fetch_hart] <= 8 + mem_rdata_latched[9:7];
-									decoded_rs1[fetch_hart] <= 8 + mem_rdata_latched[9:7];
-									decoded_rs2[fetch_hart] <= 8 + mem_rdata_latched[4:2];
-								end
-							end
-							3'b101: begin // C.J
-								instr_jal <= 1;
-							end
-							3'b110: begin // C.BEQZ
-								is_beq_bne_blt_bge_bltu_bgeu <= 1;
-								decoded_rs1[fetch_hart] <= 8 + mem_rdata_latched[9:7];
-								decoded_rs2[fetch_hart] <= 0;
-							end
-							3'b111: begin // C.BNEZ
-								is_beq_bne_blt_bge_bltu_bgeu <= 1;
-								decoded_rs1[fetch_hart] <= 8 + mem_rdata_latched[9:7];
-								decoded_rs2[fetch_hart] <= 0;
-							end
-						endcase
-					end
-					2'b10: begin // Quadrant 2
-						case (mem_rdata_latched[15:13])
-							3'b000: begin // C.SLLI
-								if (!mem_rdata_latched[12]) begin
-									is_alu_reg_imm <= 1;
-									decoded_rd[fetch_hart] <= mem_rdata_latched[11:7];
-									decoded_rs1[fetch_hart] <= mem_rdata_latched[11:7];
-									decoded_rs2[fetch_hart] <= {mem_rdata_latched[12], mem_rdata_latched[6:2]};
-								end
-							end
-							3'b010: begin // C.LWSP
-								if (mem_rdata_latched[11:7]) begin
-									is_lb_lh_lw_lbu_lhu <= 1;
-									decoded_rd[fetch_hart] <= mem_rdata_latched[11:7];
-									decoded_rs1[fetch_hart] <= 2;
-								end
-							end
-							3'b100: begin
-								if (mem_rdata_latched[12] == 0 && mem_rdata_latched[11:7] != 0 && mem_rdata_latched[6:2] == 0) begin // C.JR
-									instr_jalr <= 1;
-									decoded_rd[fetch_hart] <= 0;
-									decoded_rs1[fetch_hart] <= mem_rdata_latched[11:7];
-								end
-								if (mem_rdata_latched[12] == 0 && mem_rdata_latched[6:2] != 0) begin // C.MV
-									is_alu_reg_reg <= 1;
-									decoded_rd[fetch_hart] <= mem_rdata_latched[11:7];
-									decoded_rs1[fetch_hart] <= 0;
-									decoded_rs2[fetch_hart] <= mem_rdata_latched[6:2];
-								end
-								if (mem_rdata_latched[12] != 0 && mem_rdata_latched[11:7] != 0 && mem_rdata_latched[6:2] == 0) begin // C.JALR
-									instr_jalr <= 1;
-									decoded_rd[fetch_hart] <= 1;
-									decoded_rs1[fetch_hart] <= mem_rdata_latched[11:7];
-								end
-								if (mem_rdata_latched[12] != 0 && mem_rdata_latched[6:2] != 0) begin // C.ADD
-									is_alu_reg_reg <= 1;
-									decoded_rd[fetch_hart] <= mem_rdata_latched[11:7];
-									decoded_rs1[fetch_hart] <= mem_rdata_latched[11:7];
-									decoded_rs2[fetch_hart] <= mem_rdata_latched[6:2];
-								end
-							end
-							3'b110: begin // C.SWSP
-								is_sb_sh_sw <= 1;
-								decoded_rs1[fetch_hart] <= 2;
-								decoded_rs2[fetch_hart] <= mem_rdata_latched[6:2];
-							end
-						endcase
-					end
-				endcase
-			end
-			// END OF DELETE
 		end
 
 		if (decoder_trigger && !decoder_pseudo_trigger) begin
@@ -878,9 +693,7 @@ module picorv32 #(
 			instr_rdinstr  <=  (instr_rdata_q[6:0] == 7'b1110011 && instr_rdata_q[31:12] == 'b11000000001000000010) && ENABLE_COUNTERS;
 			instr_rdinstrh <=  (instr_rdata_q[6:0] == 7'b1110011 && instr_rdata_q[31:12] == 'b11001000001000000010) && ENABLE_COUNTERS && ENABLE_COUNTERS64;
 
-			// TODO: COMPRESSED_ISA
-			instr_ecall_ebreak <= ((instr_rdata_q[6:0] == 7'b1110011 && !instr_rdata_q[31:21] && !instr_rdata_q[19:7]) ||
-					(COMPRESSED_ISA && instr_rdata_q[15:0] == 16'h9002));
+			instr_ecall_ebreak <= instr_rdata_q[6:0] == 7'b1110011 && !instr_rdata_q[31:21] && !instr_rdata_q[19:7];
 
 			// TODO: IRQ
 			instr_getq    <= instr_rdata_q[6:0] == 7'b0001011 && instr_rdata_q[31:25] == 7'b0000000 && ENABLE_IRQ && ENABLE_IRQ_QREGS;
@@ -1014,7 +827,6 @@ module picorv32 #(
 	reg latched_store [0:THREADS-1];
 	reg latched_stalu [0:THREADS-1];
 	reg latched_branch [0:THREADS-1];
-	reg latched_compr;
 	reg latched_trace;
 	reg latched_is_lu [0:THREADS-1];
 	reg latched_is_lh [0:THREADS-1];
@@ -1109,19 +921,6 @@ module picorv32 #(
 	end
 	/* END ALU */
 
-	// TODO: COMPRESSED_ISA
-	reg clear_prefetched_high_word_q;
-	always @(posedge clk) clear_prefetched_high_word_q <= clear_prefetched_high_word;
-
-	always @* begin
-		clear_prefetched_high_word = clear_prefetched_high_word_q;
-		if (!prefetched_high_word)
-			clear_prefetched_high_word = 0;
-		// TODO: COMPRESSED_ISA
-		//if (latched_branch || irq_state || !resetn)
-		//	clear_prefetched_high_word = COMPRESSED_ISA;
-	end
-
 	/* WRITE TO REG */
 	reg cpuregs_write [0:THREADS-1];
 	reg [31:0] cpuregs_wrdata [0:THREADS-1];
@@ -1138,7 +937,7 @@ module picorv32 #(
 			(* parallel_case *)
 			case (1'b1)
 				latched_branch[fetch_hart]: begin
-					cpuregs_wrdata[fetch_hart] = reg_pc[fetch_hart] + (latched_compr ? 2 : 4);
+					cpuregs_wrdata[fetch_hart] = reg_pc[fetch_hart] + 4;
 					cpuregs_write[fetch_hart] = 1;
 				end
 				latched_store[fetch_hart] && !latched_branch[fetch_hart]: begin
@@ -1146,7 +945,7 @@ module picorv32 #(
 					cpuregs_write[fetch_hart] = 1;
 				end
 				ENABLE_IRQ && irq_state[0]: begin
-					cpuregs_wrdata[fetch_hart] = reg_next_pc[fetch_hart] | latched_compr;
+					cpuregs_wrdata[fetch_hart] = reg_next_pc[fetch_hart];
 					cpuregs_write[fetch_hart] = 1;
 				end
 				ENABLE_IRQ && irq_state[1]: begin
@@ -1332,7 +1131,7 @@ module picorv32 #(
 				case (1'b1)
 					latched_branch[fetch_hart]: begin
 						current_pc = latched_store[fetch_hart] ? (latched_stalu[fetch_hart] ? alu_out_q[fetch_hart] : reg_out[fetch_hart]) & ~1 : reg_next_pc[fetch_hart];
-						`debug($display("ST_RD:  %2d 0x%08x, BRANCH 0x%08x", latched_rd[fetch_hart], reg_pc + (latched_compr ? 2 : 4), current_pc);)
+						`debug($display("ST_RD:  %2d 0x%08x, BRANCH 0x%08x", latched_rd[fetch_hart], reg_pc + 4, current_pc);)
 					end
 					latched_store[fetch_hart] && !latched_branch[fetch_hart]: begin
 						`debug($display("ST_RD:  %2d 0x%08x", latched_rd[fetch_hart], latched_stalu[fetch_hart] ? alu_out_q[fetch_hart] : reg_out[fetch_hart]);)
@@ -1368,15 +1167,12 @@ module picorv32 #(
 				latched_is_lh[fetch_hart] <= 0;
 				latched_is_lb[fetch_hart] <= 0;
 				latched_rd[fetch_hart] <= decoded_rd[fetch_hart];
-				// TODO: COMPRESSED_ISA
-				latched_compr <= compressed_instr;
 
 				// TODO: IRQ
 				if (ENABLE_IRQ && ((decoder_trigger && !irq_active && !irq_delay && |(irq_pending & ~irq_mask)) || irq_state)) begin
 					irq_state <=
 						irq_state == 2'b00 ? 2'b01 :
 						irq_state == 2'b01 ? 2'b10 : 2'b00;
-					latched_compr <= latched_compr;
 					if (ENABLE_IRQ_QREGS)
 						latched_rd[fetch_hart] <= irqregs_offset | irq_state[0];
 					else
@@ -1386,7 +1182,7 @@ module picorv32 #(
 					if (irq_pending) begin
 						latched_store[fetch_hart] <= 1;
 						reg_out[fetch_hart] <= irq_pending;
-						reg_next_pc[fetch_hart] <= current_pc + (compressed_instr ? 2 : 4);
+						reg_next_pc[fetch_hart] <= current_pc + 4;
 						instr_do_rinst <= 1;
 					end else
 						do_waitirq <= 1;
@@ -1394,7 +1190,7 @@ module picorv32 #(
 				if (decoder_trigger) begin
 					`debug($display("-- %-0t", $time);)
 					irq_delay <= irq_active;
-					reg_next_pc[fetch_hart] <= current_pc + (compressed_instr ? 2 : 4);
+					reg_next_pc[fetch_hart] <= current_pc + 4;
 					if (ENABLE_TRACE)
 						latched_trace <= 1;
 					if (ENABLE_COUNTERS) begin
@@ -1844,14 +1640,8 @@ module picorv32 #(
 
 		if (!CATCH_MISALIGN) begin
 			for (k = 0; k < THREADS; k = k + 1) begin
-				// TODO: COMPRESSED_ISA
-				if (COMPRESSED_ISA) begin
-					reg_pc[k][0] <= 0;
-					reg_next_pc[k][0] <= 0;
-				end else begin
-					reg_pc[k][1:0] <= 0;
-					reg_next_pc[k][1:0] <= 0;
-				end
+				reg_pc[k][1:0] <= 0;
+				reg_next_pc[k][1:0] <= 0;
 			end
 		end
 
@@ -1983,7 +1773,7 @@ module picorv32 #(
 	end
 `endif
 
-	// Formal Verification
+	// Formal Verification | TODO
 `ifdef FORMAL
 	reg [3:0] last_mem_nowait;
 	always @(posedge clk)
@@ -1998,7 +1788,6 @@ module picorv32 #(
 	// this just makes it much easier to read traces. uncomment as needed.
 	// assume property (mem_valid || !mem_ready);
 
-	// TODO
 	reg ok;
 	always @* begin
 		if (resetn) begin

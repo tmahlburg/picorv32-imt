@@ -112,9 +112,7 @@ module basys3(
 		end
 	end
 
-	picoramsoc #(
-	   .ENABLE_COMPRESSED(0)
-	) soc (
+	picoramsoc soc (
 	   .clk(CLKOUT[0]),
 	   .resetn(resetn),
 
