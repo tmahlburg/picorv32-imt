@@ -1,16 +1,14 @@
 
-PicoRV32 - A Size-Optimized RISC-V CPU
-======================================
+PicoRV32-imt - A Size-Optimized RISC-V CPU extended with IMT
+============================================================
 
-PicoRV32 is a CPU core that implements the [RISC-V RV32IMC Instruction Set](http://riscv.org/).
-It can be configured as RV32E, RV32I, RV32IC, RV32IM, or RV32IMC core, and optionally
-contains a built-in interrupt controller.
+PicoRV32-imt is a CPU core based on Claire Wolf's [PicoRV32](https://github.com/cliffordwolf/picorv32). To simplify the implementation of interleaved multithreading in this core, some features of the source have been dropped (for now). This core just implements the [RISC-V RV32I Instruction Set](http://riscv.org/). The interrupt controller of the original is still there but yet to be tested. This CPU has not yet successfully run on real hardware, but it works well in simulation.
 
 Tools (gcc, binutils, etc..) can be obtained via the [RISC-V Website](https://riscv.org/software-status/).
-The examples bundled with PicoRV32 expect various RV32 toolchains to be installed in `/opt/riscv32i[m][c]`. See
+The examples bundled with PicoRV32-imt expect various RV32 toolchains to be installed in `/opt/riscv32i`. See
 the [build instructions below](#building-a-pure-rv32i-toolchain) for details.
 
-PicoRV32 is free and open hardware licensed under the [ISC license](http://en.wikipedia.org/wiki/ISC_license)
+PicoRV32-imt is free and open hardware licensed under the [ISC license](http://en.wikipedia.org/wiki/ISC_license)
 (a license that is similar in terms to the MIT license or the 2-clause BSD license).
 
 #### Table of Contents
@@ -20,12 +18,9 @@ PicoRV32 is free and open hardware licensed under the [ISC license](http://en.wi
 - [Verilog Module Parameters](#verilog-module-parameters)
 - [Cycles per Instruction Performance](#cycles-per-instruction-performance)
 - [PicoRV32 Native Memory Interface](#picorv32-native-memory-interface)
-- [Pico Co-Processor Interface (PCPI)](#pico-co-processor-interface-pcpi)
 - [Custom Instructions for IRQ Handling](#custom-instructions-for-irq-handling)
 - [Building a pure RV32I Toolchain](#building-a-pure-rv32i-toolchain)
 - [Linking binaries with newlib for PicoRV32](#linking-binaries-with-newlib-for-picorv32)
-- [Evaluation: Timing and Utilization on Xilinx 7-Series FPGAs](#evaluation-timing-and-utilization-on-xilinx-7-series-fpgas)
-
 
 Features and Typical Applications
 ---------------------------------
@@ -88,13 +83,7 @@ This Verilog file contains the following Verilog modules:
 
 | Module                   | Description                                                           |
 | ------------------------ | --------------------------------------------------------------------- |
-| `picorv32`               | The PicoRV32 CPU                                                      |
-| `picorv32_axi`           | The version of the CPU with AXI4-Lite interface                       |
-| `picorv32_axi_adapter`   | Adapter from PicoRV32 Memory Interface to AXI4-Lite                   |
-| `picorv32_wb`            | The version of the CPU with Wishbone Master interface                 |
-| `picorv32_pcpi_mul`      | A PCPI core that implements the `MUL[H[SU\|U]]` instructions          |
-| `picorv32_pcpi_fast_mul` | A version of `picorv32_pcpi_fast_mul` using a single cycle multiplier |
-| `picorv32_pcpi_div`      | A PCPI core that implements the `DIV[U]/REM[U]` instructions          |
+| `picorv32`               | The PicoRV32-imt CPU                                                  |
 
 Simply copy this file into your project.
 
@@ -130,8 +119,12 @@ Another simple test firmware that runs the Dhrystone benchmark.
 
 #### picosoc/
 
-A simple example SoC using PicoRV32 that can execute code directly from a
+A simple example SoC using PicoRV32-imt that can execute code directly from a
 memory mapped SPI flash.
+
+### picoramsoc/
+
+A simple example SoC using PicoRV32-imt that can execute code from RAM via a memory file.
 
 #### scripts/
 
@@ -161,12 +154,6 @@ This parameter enables support for the `RDCYCLEH`, `RDTIMEH`, and `RDINSTRETH`
 instructions. If this parameter is set to 0, and `ENABLE_COUNTERS` is set to 1,
 then only the `RDCYCLE`, `RDTIME`, and `RDINSTRET` instructions are available.
 
-#### ENABLE_REGS_16_31 (default = 1)
-
-This parameter enables support for registers the `x16`..`x31`. The RV32E ISA
-excludes this registers. However, the RV32E ISA spec requires a hardware trap
-for when code tries to access this registers. This is not implemented in PicoRV32.
-
 #### ENABLE_REGS_DUALPORT (default = 1)
 
 The register file can be implemented with two or one read ports. A dual ported
@@ -179,9 +166,6 @@ Set this to 1 if the `mem_rdata` is kept stable by the external circuit after a
 transaction. In the default configuration the PicoRV32 core only expects the
 `mem_rdata` input to be valid in the cycle with `mem_valid && mem_ready` and
 latches the value internally.
-
-This parameter is only available for the `picorv32` core. In the
-`picorv32_axi` and `picorv32_wb` core this is implicitly set to 0.
 
 #### TWO_STAGE_SHIFT (default = 1)
 
@@ -214,10 +198,6 @@ the ALU.
 *Note: Enabling this parameter will be most effective when retiming (aka
 "register balancing") is enabled in the synthesis flow.*
 
-#### COMPRESSED_ISA (default = 0)
-
-This enables support for the RISC-V Compressed Instruction Set.
-
 #### CATCH_MISALIGN (default = 1)
 
 Set this to 0 to disable the circuitry for catching misaligned memory
@@ -231,31 +211,6 @@ The core will still trap on `EBREAK` instructions with this option
 set to 0. With IRQs enabled, an `EBREAK` normally triggers an IRQ 1. With
 this option set to 0, an `EBREAK` will trap the processor without
 triggering an interrupt.
-
-#### ENABLE_PCPI (default = 0)
-
-Set this to 1 to enable the Pico Co-Processor Interface (PCPI).
-
-#### ENABLE_MUL (default = 0)
-
-This parameter internally enables PCPI and instantiates the `picorv32_pcpi_mul`
-core that implements the `MUL[H[SU|U]]` instructions. The external PCPI
-interface only becomes functional when ENABLE_PCPI is set as well.
-
-#### ENABLE_FAST_MUL (default = 0)
-
-This parameter internally enables PCPI and instantiates the `picorv32_pcpi_fast_mul`
-core that implements the `MUL[H[SU|U]]` instructions. The external PCPI
-interface only becomes functional when ENABLE_PCPI is set as well.
-
-If both ENABLE_MUL and ENABLE_FAST_MUL are set then the ENABLE_MUL setting
-will be ignored and the fast multiplier core will be instantiated.
-
-#### ENABLE_DIV (default = 0)
-
-This parameter internally enables PCPI and instantiates the `picorv32_pcpi_div`
-core that implements the `DIV[U]/REM[U]` instructions. The external PCPI
-interface only becomes functional when ENABLE_PCPI is set as well.
 
 #### ENABLE_IRQ (default = 0)
 
@@ -326,7 +281,7 @@ Cycles per Instruction Performance
 
 *A short reminder: This core is optimized for size and f<sub>max</sub>, not performance.*
 
-Unless stated otherwise, the following numbers apply to a PicoRV32 with
+Unless stated otherwise, the following numbers apply to a PicoRV32-imt with
 ENABLE_REGS_DUALPORT active and connected to a memory that can accommodate
 requests within one clock cycle.
 
@@ -347,18 +302,6 @@ a core built without ENABLE_REGS_DUALPORT.
 | indirect jump (jalr) |    6 |        6 |
 | shift operations     | 4-14 |     4-15 |
 
-When `ENABLE_MUL` is activated, then a `MUL` instruction will execute
-in 40 cycles and a `MULH[SU|U]` instruction will execute in 72 cycles.
-
-When `ENABLE_DIV` is activated, then a `DIV[U]/REM[U]` instruction will
-execute in 40 cycles.
-
-When `BARREL_SHIFTER` is activated, a shift operation takes as long as
-any other ALU operation.
-
-The following dhrystone benchmark results are for a core with enabled
-`ENABLE_FAST_MUL`, `ENABLE_DIV`, and `BARREL_SHIFTER` options.
-
 Dhrystone benchmark results: 0.516 DMIPS/MHz (908 Dhrystones/Second/MHz)
 
 For the Dhrystone benchmark the average CPI is 4.100.
@@ -371,21 +314,27 @@ PicoRV32 Native Memory Interface
 --------------------------------
 
 The native memory interface of PicoRV32 is a simple valid-ready interface
-that can run one memory transfer at a time:
+that can run one memory transfer and one instruction transfer at a time:
 
     output        mem_valid
-    output        mem_instr
     input         mem_ready
 
     output [31:0] mem_addr
     output [31:0] mem_wdata
     output [ 3:0] mem_wstrb
     input  [31:0] mem_rdata
+    
+    output        mem_instr
+    output        instr_valid
+    input         instr_ready
+    
+    output [31:0] instr_addr
+    input  [31:0] instr_rdata
 
 The core initiates a memory transfer by asserting `mem_valid`. The valid
 signal stays high until the peer asserts `mem_ready`. All core outputs
-are stable over the `mem_valid` period. If the memory transfer is an
-instruction fetch, the core asserts `mem_instr`.
+are stable over the `mem_valid` period. The instruction interface
+works the same way, except that the core asserts `mem_instr`.
 
 #### Read Transfer
 
@@ -397,6 +346,8 @@ The memory reads the address `mem_addr` and makes the read value available on
 There is no need for an external wait cycle. The memory read can be implemented
 asynchronously with `mem_ready` going high in the same cycle as `mem_valid`, or
 `mem_ready` being tied to constant 1.
+
+Again, the instruction interface works the same way.
 
 #### Write Transfer
 
@@ -434,47 +385,12 @@ by combinatorial circuits within the PicoRV32 core. It might be harder to
 achieve timing closure with the look-ahead interface than with the normal
 memory interface described above.*
 
-
-Pico Co-Processor Interface (PCPI)
-----------------------------------
-
-The Pico Co-Processor Interface (PCPI) can be used to implement non-branching
-instructions in external cores:
-
-    output        pcpi_valid
-    output [31:0] pcpi_insn
-    output [31:0] pcpi_rs1
-    output [31:0] pcpi_rs2
-    input         pcpi_wr
-    input  [31:0] pcpi_rd
-    input         pcpi_wait
-    input         pcpi_ready
-
-When an unsupported instruction is encountered and the PCPI feature is
-activated (see ENABLE_PCPI above), then `pcpi_valid` is asserted, the
-instruction word itself is output on `pcpi_insn`, the `rs1` and `rs2`
-fields are decoded and the values in those registers are output
-on `pcpi_rs1` and `pcpi_rs2`.
-
-An external PCPI core can then decode the instruction, execute it, and assert
-`pcpi_ready` when execution of the instruction is finished. Optionally a
-result value can be written to `pcpi_rd` and `pcpi_wr` asserted. The
-PicoRV32 core will then decode the `rd` field of the instruction and
-write the value from `pcpi_rd` to the respective register.
-
-When no external PCPI core acknowledges the instruction within 16 clock
-cycles, then an illegal instruction exception is raised and the respective
-interrupt handler is called. A PCPI core that needs more than a couple of
-cycles to execute an instruction, should assert `pcpi_wait` as soon as
-the instruction has been decoded successfully and keep it asserted until
-it asserts `pcpi_ready`. This will prevent the PicoRV32 core from raising
-an illegal instruction exception.
-
-
 Custom Instructions for IRQ Handling
 ------------------------------------
 
-*Note: The IRQ handling features in PicoRV32 do not follow the RISC-V
+This is untested for now.
+
+*Note: The IRQ handling features in PicoRV32-imt do not follow the RISC-V
 Privileged ISA specification. Instead a small set of very simple custom
 instructions is used to implement IRQ handling with minimal hardware
 overhead.*
@@ -498,8 +414,7 @@ The IRQs 0-2 can be triggered internally by the following built-in interrupt sou
 |   1 | EBREAK/ECALL or Illegal Instruction |
 |   2 | BUS Error (Unalign Memory Access)   |
 
-This interrupts can also be triggered by external sources, such as co-processors
-connected via PCPI.
+This interrupts can also be triggered by external sources.
 
 The core has 4 additional 32-bit registers `q0 .. q3` that are used for IRQ
 handling. When the IRQ handler is called, the register `q0` contains the return
@@ -651,9 +566,6 @@ PicoRV32 source directory:
 | Command                                  | Install Directory  | ISA       |
 |:---------------------------------------- |:------------------ |:--------  |
 | `make -j$(nproc) build-riscv32i-tools`   | `/opt/riscv32i/`   | `RV32I`   |
-| `make -j$(nproc) build-riscv32ic-tools`  | `/opt/riscv32ic/`  | `RV32IC`  |
-| `make -j$(nproc) build-riscv32im-tools`  | `/opt/riscv32im/`  | `RV32IM`  |
-| `make -j$(nproc) build-riscv32imc-tools` | `/opt/riscv32imc/` | `RV32IMC` |
 
 Or simply run `make -j$(nproc) build-tools` to build and install all four tool chains.
 
@@ -664,8 +576,8 @@ once in advance.
 *Note: These instructions are for git rev 411d134 (2018-02-14) of riscv-gnu-toolchain.*
 
 
-Linking binaries with newlib for PicoRV32
------------------------------------------
+Linking binaries with newlib for PicoRV32-imt
+---------------------------------------------
 
 The tool chains (see last section for install instructions) come with a version of
 the newlib C standard library.
@@ -680,56 +592,3 @@ Newlib comes with a few syscall stubs. You need to provide your own implementati
 of those syscalls and link your program with this implementation, overwriting the
 default stubs from newlib. See `syscalls.c` in [scripts/cxxdemo/](scripts/cxxdemo/)
 for an example of how to do that.
-
-
-Evaluation: Timing and Utilization on Xilinx 7-Series FPGAs
------------------------------------------------------------
-
-The following evaluations have been performed with Vivado 2017.3.
-
-#### Timing on Xilinx 7-Series FPGAs
-
-The `picorv32_axi` module with enabled `TWO_CYCLE_ALU` has been placed and
-routed for Xilinx Artix-7T, Kintex-7T, Virtex-7T, Kintex UltraScale, and Virtex
-UltraScale devices in all speed grades. A binary search is used to find the
-shortest clock period for which the design meets timing.
-
-See `make table.txt` in [scripts/vivado/](scripts/vivado/).
-
-| Device                    | Device               | Speedgrade | Clock Period (Freq.) |
-|:------------------------- |:---------------------|:----------:| --------------------:|
-| Xilinx Kintex-7T          | xc7k70t-fbg676-2     | -2         |     2.4 ns (416 MHz) |
-| Xilinx Kintex-7T          | xc7k70t-fbg676-3     | -3         |     2.2 ns (454 MHz) |
-| Xilinx Virtex-7T          | xc7v585t-ffg1761-2   | -2         |     2.3 ns (434 MHz) |
-| Xilinx Virtex-7T          | xc7v585t-ffg1761-3   | -3         |     2.2 ns (454 MHz) |
-| Xilinx Kintex UltraScale  | xcku035-fbva676-2-e  | -2         |     2.0 ns (500 MHz) |
-| Xilinx Kintex UltraScale  | xcku035-fbva676-3-e  | -3         |     1.8 ns (555 MHz) |
-| Xilinx Virtex UltraScale  | xcvu065-ffvc1517-2-e | -2         |     2.1 ns (476 MHz) |
-| Xilinx Virtex UltraScale  | xcvu065-ffvc1517-3-e | -3         |     2.0 ns (500 MHz) |
-| Xilinx Kintex UltraScale+ | xcku3p-ffva676-2-e   | -2         |     1.4 ns (714 MHz) |
-| Xilinx Kintex UltraScale+ | xcku3p-ffva676-3-e   | -3         |     1.3 ns (769 MHz) |
-| Xilinx Virtex UltraScale+ | xcvu3p-ffvc1517-2-e  | -2         |     1.5 ns (666 MHz) |
-| Xilinx Virtex UltraScale+ | xcvu3p-ffvc1517-3-e  | -3         |     1.4 ns (714 MHz) |
-
-#### Utilization on Xilinx 7-Series FPGAs
-
-The following table lists the resource utilization in area-optimized synthesis
-for the following three cores:
-
-- **PicoRV32 (small):** The `picorv32` module without counter instructions,
-  without two-stage shifts, with externally latched `mem_rdata`, and without
-  catching of misaligned memory accesses and illegal instructions.
-
-- **PicoRV32 (regular):** The `picorv32` module in its default configuration.
-
-- **PicoRV32 (large):** The `picorv32` module with enabled PCPI, IRQ, MUL,
-  DIV, BARREL_SHIFTER, and COMPRESSED_ISA features.
-
-See `make area` in [scripts/vivado/](scripts/vivado/).
-
-| Core Variant       | Slice LUTs | LUTs as Memory | Slice Registers |
-|:------------------ | ----------:| --------------:| ---------------:|
-| PicoRV32 (small)   |        761 |             48 |             442 |
-| PicoRV32 (regular) |        917 |             48 |             583 |
-| PicoRV32 (large)   |       2019 |             88 |            1085 |
-
