@@ -62,7 +62,6 @@
 module picorv32 #(
 	parameter [ 0:0] ENABLE_COUNTERS = 1,
 	parameter [ 0:0] ENABLE_COUNTERS64 = 1,
-	parameter [ 0:0] ENABLE_REGS_16_31 = 1,
 	parameter [ 0:0] ENABLE_REGS_DUALPORT = 1,
 	parameter [ 0:0] LATCHED_MEM_RDATA = 0,
 	parameter [ 0:0] TWO_STAGE_SHIFT = 0,
@@ -154,9 +153,9 @@ module picorv32 #(
 	localparam integer irq_ebreak = 1;
 	localparam integer irq_buserror = 2;
 
-	localparam integer irqregs_offset = ENABLE_REGS_16_31 ? 32 : 16;
-	localparam integer regfile_size = (ENABLE_REGS_16_31 ? 32 : 16) + 4*ENABLE_IRQ*ENABLE_IRQ_QREGS;
-	localparam integer regindex_bits = (ENABLE_REGS_16_31 ? 5 : 4) + ENABLE_IRQ*ENABLE_IRQ_QREGS;
+	localparam integer irqregs_offset = 32;
+	localparam integer regfile_size = 32 + 4*ENABLE_IRQ*ENABLE_IRQ_QREGS;
+	localparam integer regindex_bits = 5 + ENABLE_IRQ*ENABLE_IRQ_QREGS;
 
 	localparam [35:0] TRACE_BRANCH = {4'b 0001, 32'b 0};
 	localparam [35:0] TRACE_ADDR   = {4'b 0010, 32'b 0};
