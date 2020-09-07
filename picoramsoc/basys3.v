@@ -113,7 +113,6 @@ module basys3(
 	end
 
 	picoramsoc #(
-	   .ENABLE_MULDIV(0),
 	   .ENABLE_COMPRESSED(0)
 	) soc (
 	   .clk(CLKOUT[0]),

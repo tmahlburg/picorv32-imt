@@ -73,10 +73,6 @@ module picorv32 #(
 	parameter [ 0:0] COMPRESSED_ISA = 0,
 	parameter [ 0:0] CATCH_MISALIGN = 1,
 	parameter [ 0:0] CATCH_ILLINSN = 1,
-	parameter [ 0:0] ENABLE_PCPI = 0,
-	parameter [ 0:0] ENABLE_MUL = 0,
-	parameter [ 0:0] ENABLE_FAST_MUL = 0,
-	parameter [ 0:0] ENABLE_DIV = 0,
 	parameter [ 0:0] ENABLE_IRQ = 0,
 	parameter [ 0:0] ENABLE_IRQ_QREGS = 1,
 	parameter [ 0:0] ENABLE_IRQ_TIMER = 1,
@@ -113,16 +109,6 @@ module picorv32 #(
 	input 	      	  instr_ready,
 	output	   [31:0] instr_addr,
 	input      [31:0] instr_rdata,
-
-	// Pico Co-Processor Interface (PCPI)
-	output reg        pcpi_valid,
-	output reg [31:0] pcpi_insn,
-	output     [31:0] pcpi_rs1,
-	output     [31:0] pcpi_rs2,
-	input             pcpi_wr,
-	input      [31:0] pcpi_rd,
-	input             pcpi_wait,
-	input             pcpi_ready,
 
 	// IRQ Interface
 	input      [31:0] irq,
@@ -174,8 +160,6 @@ module picorv32 #(
 	localparam integer regfile_size = (ENABLE_REGS_16_31 ? 32 : 16) + 4*ENABLE_IRQ*ENABLE_IRQ_QREGS;
 	localparam integer regindex_bits = (ENABLE_REGS_16_31 ? 5 : 4) + ENABLE_IRQ*ENABLE_IRQ_QREGS;
 
-	localparam WITH_PCPI = ENABLE_PCPI || ENABLE_MUL || ENABLE_FAST_MUL || ENABLE_DIV;
-
 	localparam [35:0] TRACE_BRANCH = {4'b 0001, 32'b 0};
 	localparam [35:0] TRACE_ADDR   = {4'b 0010, 32'b 0};
 	localparam [35:0] TRACE_IRQ    = {4'b 1000, 32'b 0};
@@ -199,10 +183,6 @@ module picorv32 #(
 	wire [31:0] dbg_mem_wdata = mem_wdata;
 	wire [ 3:0] dbg_mem_wstrb = mem_wstrb;
 	wire [31:0] dbg_mem_rdata = mem_rdata;
-
-	//TODO PCPI
-	//assign pcpi_rs1 = reg_op1;
-	//assign pcpi_rs2 = reg_op2;
 
 	wire [31:0] next_pc [0:THREADS-1];
 
@@ -279,101 +259,6 @@ module picorv32 #(
 	wire [31:0] dbg_reg_x30 = cpuregs[30];
 	wire [31:0] dbg_reg_x31 = cpuregs[31];
 `endif
-
-	// TODO: PCPI
-	// Internal PCPI Cores
-
-	wire        pcpi_mul_wr;
-	wire [31:0] pcpi_mul_rd;
-	wire        pcpi_mul_wait;
-	wire        pcpi_mul_ready;
-
-	wire        pcpi_div_wr;
-	wire [31:0] pcpi_div_rd;
-	wire        pcpi_div_wait;
-	wire        pcpi_div_ready;
-
-	reg        pcpi_int_wr;
-	reg [31:0] pcpi_int_rd;
-	reg        pcpi_int_wait;
-	reg        pcpi_int_ready;
-
-	generate if (ENABLE_FAST_MUL) begin
-		picorv32_pcpi_fast_mul pcpi_mul (
-			.clk       (clk            ),
-			.resetn    (resetn         ),
-			.pcpi_valid(pcpi_valid     ),
-			.pcpi_insn (pcpi_insn      ),
-			.pcpi_rs1  (pcpi_rs1       ),
-			.pcpi_rs2  (pcpi_rs2       ),
-			.pcpi_wr   (pcpi_mul_wr    ),
-			.pcpi_rd   (pcpi_mul_rd    ),
-			.pcpi_wait (pcpi_mul_wait  ),
-			.pcpi_ready(pcpi_mul_ready )
-		);
-	end else if (ENABLE_MUL) begin
-		picorv32_pcpi_mul pcpi_mul (
-			.clk       (clk            ),
-			.resetn    (resetn         ),
-			.pcpi_valid(pcpi_valid     ),
-			.pcpi_insn (pcpi_insn      ),
-			.pcpi_rs1  (pcpi_rs1       ),
-			.pcpi_rs2  (pcpi_rs2       ),
-			.pcpi_wr   (pcpi_mul_wr    ),
-			.pcpi_rd   (pcpi_mul_rd    ),
-			.pcpi_wait (pcpi_mul_wait  ),
-			.pcpi_ready(pcpi_mul_ready )
-		);
-	end else begin
-		assign pcpi_mul_wr = 0;
-		assign pcpi_mul_rd = 32'bx;
-		assign pcpi_mul_wait = 0;
-		assign pcpi_mul_ready = 0;
-	end endgenerate
-
-	generate if (ENABLE_DIV) begin
-		picorv32_pcpi_div pcpi_div (
-			.clk       (clk            ),
-			.resetn    (resetn         ),
-			.pcpi_valid(pcpi_valid     ),
-			.pcpi_insn (pcpi_insn      ),
-			.pcpi_rs1  (pcpi_rs1       ),
-			.pcpi_rs2  (pcpi_rs2       ),
-			.pcpi_wr   (pcpi_div_wr    ),
-			.pcpi_rd   (pcpi_div_rd    ),
-			.pcpi_wait (pcpi_div_wait  ),
-			.pcpi_ready(pcpi_div_ready )
-		);
-	end else begin
-		assign pcpi_div_wr = 0;
-		assign pcpi_div_rd = 32'bx;
-		assign pcpi_div_wait = 0;
-		assign pcpi_div_ready = 0;
-	end endgenerate
-
-	always @* begin
-		pcpi_int_wr = 0;
-		pcpi_int_rd = 32'bx;
-		pcpi_int_wait  = |{ENABLE_PCPI && pcpi_wait,  (ENABLE_MUL || ENABLE_FAST_MUL) && pcpi_mul_wait,  ENABLE_DIV && pcpi_div_wait};
-		pcpi_int_ready = |{ENABLE_PCPI && pcpi_ready, (ENABLE_MUL || ENABLE_FAST_MUL) && pcpi_mul_ready, ENABLE_DIV && pcpi_div_ready};
-
-		(* parallel_case *)
-		case (1'b1)
-			ENABLE_PCPI && pcpi_ready: begin
-				pcpi_int_wr = ENABLE_PCPI ? pcpi_wr : 0;
-				pcpi_int_rd = ENABLE_PCPI ? pcpi_rd : 0;
-			end
-			(ENABLE_MUL || ENABLE_FAST_MUL) && pcpi_mul_ready: begin
-				pcpi_int_wr = pcpi_mul_wr;
-				pcpi_int_rd = pcpi_mul_rd;
-			end
-			ENABLE_DIV && pcpi_div_ready: begin
-				pcpi_int_wr = pcpi_div_wr;
-				pcpi_int_rd = pcpi_div_rd;
-			end
-		endcase
-	end
-
 
 	// Memory Interface
 
@@ -662,7 +547,7 @@ module picorv32 #(
 
 	reg is_csrrs;
 
-	assign instr_trap = (CATCH_ILLINSN || WITH_PCPI) && !{instr_lui, instr_auipc, instr_jal, instr_jalr,
+	assign instr_trap = (CATCH_ILLINSN) && !{instr_lui, instr_auipc, instr_jal, instr_jalr,
 			instr_beq, instr_bne, instr_blt, instr_bge, instr_bltu, instr_bgeu,
 			instr_lb, instr_lh, instr_lw, instr_lbu, instr_lhu, instr_sb, instr_sh, instr_sw,
 			instr_addi, instr_slti, instr_sltiu, instr_xori, instr_ori, instr_andi, instr_slli, instr_srli, instr_srai,
@@ -947,9 +832,6 @@ module picorv32 #(
 		end
 
 		if (decoder_trigger && !decoder_pseudo_trigger) begin
-			//TODO: PCPI
-			pcpi_insn <= WITH_PCPI ? instr_rdata_q : 'bx;
-
 			instr_beq   <= is_beq_bne_blt_bge_bltu_bgeu && instr_rdata_q[14:12] == 3'b000;
 			instr_bne   <= is_beq_bne_blt_bge_bltu_bgeu && instr_rdata_q[14:12] == 3'b001;
 			instr_blt   <= is_beq_bne_blt_bge_bltu_bgeu && instr_rdata_q[14:12] == 3'b100;
@@ -1116,6 +998,7 @@ module picorv32 #(
 			if (hart_ready[i] == cpu_state_trap)   dbg_ascii_state[i] = "trap";
 			if (hart_ready[i] == cpu_state_fetch)  dbg_ascii_state[i] = "fetch";
 			if (hart_ready[i] == cpu_state_ld_rs1) dbg_ascii_state[i] = "ld_rs1";
+			if (hart_ready[i] == cpu_state_ld_rs2) dbg_ascii_state[i] = "ld_rs2";
 			if (hart_ready[i] == cpu_state_exec)   dbg_ascii_state[i] = "exec";
 			if (hart_ready[i] == cpu_state_shift)  dbg_ascii_state[i] = "shift";
 			if (hart_ready[i] == cpu_state_stmem)  dbg_ascii_state[i] = "stmem";
@@ -1144,10 +1027,6 @@ module picorv32 #(
 		for (h = 0; h < THREADS; h = h + 1)
 			assign next_pc[h] = latched_store[h] && latched_branch[h] ? reg_out[h] & ~1 : reg_next_pc[h];
 	endgenerate
-
-	// TODO: PCPI
-	reg [3:0] pcpi_timeout_counter;
-	reg pcpi_timeout;
 
 	// TODO: IRQ
 	reg [31:0] next_irq_pending;
@@ -1377,16 +1256,6 @@ module picorv32 #(
 		alu_wait <= 0;
 		alu_wait_2 <= 0;
 
-		// TODO: PCPI
-		if (WITH_PCPI && CATCH_ILLINSN) begin
-			if (resetn && pcpi_valid && !pcpi_int_wait) begin
-				if (pcpi_timeout_counter)
-					pcpi_timeout_counter <= pcpi_timeout_counter - 1;
-			end else
-				pcpi_timeout_counter <= ~0;
-			pcpi_timeout <= !pcpi_timeout_counter;
-		end
-
 		if (ENABLE_COUNTERS) begin
 			count_cycle <= resetn ? count_cycle + 1 : 0;
 			if (!ENABLE_COUNTERS64) count_cycle[63:32] <= 0;
@@ -1429,9 +1298,6 @@ module picorv32 #(
 			if (ENABLE_COUNTERS)
 				count_instr <= 0;
 			latched_trace <= 0;
-			// TODO: PCPI
-			pcpi_valid <= 0;
-			pcpi_timeout <= 0;
 			//TODO IRQ
 			irq_active <= 0;
 			irq_delay <= 0;
@@ -1552,58 +1418,16 @@ module picorv32 #(
 
 				(* parallel_case *)
 				case (1'b1)
-					(CATCH_ILLINSN || WITH_PCPI) && instr_trap: begin
-						// TO DELETE IF PCPI IS DELETED
-						if (WITH_PCPI) begin
-							`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1[ld_rs1_hart], cpuregs_rs1[ld_rs1_hart]);)
-							reg_op1[ld_rs1_hart] <= cpuregs_rs1[ld_rs1_hart];
-							dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
-							dbg_rs1val_valid <= 1;
-							if (ENABLE_REGS_DUALPORT) begin
-								pcpi_valid <= 1;
-								`debug($display("LD_RS2: %2d 0x%08x", decoded_rs2[ld_rs1_hart], cpuregs_rs2[ld_rs1_hart]);)
-								reg_sh[ld_rs1_hart] <= cpuregs_rs2[ld_rs1_hart];
-								reg_op2[ld_rs1_hart] <= cpuregs_rs2[ld_rs1_hart];
-								// TODO
-								dbg_rs2val <= cpuregs_rs2[ld_rs1_hart];
-								dbg_rs2val_valid <= 1;
-								if (pcpi_int_ready) begin
-									instr_do_rinst <= 1;
-									pcpi_valid <= 0;
-									reg_out[ld_rs1_hart] <= pcpi_int_rd;
-									latched_store[ld_rs1_hart] <= pcpi_int_wr;
-									hart_ready[ld_rs1_hart] = cpu_state_fetch;
-									ld_rs1_hart = no_hart;
-								end else
-								if (CATCH_ILLINSN && (pcpi_timeout || instr_ecall_ebreak)) begin
-									pcpi_valid <= 0;
-									`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
-									if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
-										next_irq_pending[irq_ebreak] = 1;
-										hart_ready[ld_rs1_hart] = cpu_state_fetch;
-										ld_rs1_hart = no_hart;
-									end else begin
-										hart_ready[ld_rs1_hart] = cpu_state_trap;
-										ld_rs1_hart = no_hart;
-									end
-								end
-							end else begin
-								// TODO: ld_rs2
-								hart_ready[ld_rs1_hart] = cpu_state_ld_rs2;
-								ld_rs1_hart = no_hart;
-							end
-						// END DELETE
+					CATCH_ILLINSN && instr_trap: begin
+						// TODO: IRQ
+						`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
+						if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
+							next_irq_pending[irq_ebreak] = 1;
+							hart_ready[ld_rs1_hart] = cpu_state_fetch;
+							ld_rs1_hart = no_hart;
 						end else begin
-							// TODO: IRQ
-							`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
-							if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
-								next_irq_pending[irq_ebreak] = 1;
-								hart_ready[ld_rs1_hart] = cpu_state_fetch;
-								ld_rs1_hart = no_hart;
-							end else begin
-								hart_ready[ld_rs1_hart] = cpu_state_trap;
-								ld_rs1_hart = no_hart;
-							end
+							hart_ready[ld_rs1_hart] = cpu_state_trap;
+							ld_rs1_hart = no_hart;
 						end
 					end
 					ENABLE_COUNTERS && is_rdcycle_rdcycleh_rdinstr_rdinstrh: begin
@@ -1760,32 +1584,6 @@ module picorv32 #(
 
 				(* parallel_case *)
 				case (1'b1)
-					// TODO: PCPI
-					WITH_PCPI && instr_trap: begin
-						pcpi_valid <= 1;
-						// TO DELETE IF PCPI GETS DELETED
-						if (pcpi_int_ready) begin
-							instr_do_rinst <= 1;
-							pcpi_valid <= 0;
-							reg_out[ld_rs2_hart] <= pcpi_int_rd;
-							latched_store[ld_rs2_hart] <= pcpi_int_wr;
-							hart_ready[ld_rs2_hart] = cpu_state_fetch;
-							ld_rs2_hart = no_hart;
-						end else
-						// END DELETE
-						if (CATCH_ILLINSN && (pcpi_timeout || instr_ecall_ebreak)) begin
-							pcpi_valid <= 0;
-							`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
-							if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
-								next_irq_pending[irq_ebreak] = 1;
-								hart_ready[ld_rs2_hart] = cpu_state_fetch;
-								ld_rs2_hart = no_hart;
-							end else begin
-								hart_ready[ld_rs2_hart] = cpu_state_trap;
-								ld_rs2_hart = no_hart;
-							end
-						end
-					end
 					is_sb_sh_sw: begin
 						hart_ready[ld_rs2_hart] = cpu_state_stmem;
 						ld_rs2_hart = no_hart;
@@ -2222,7 +2020,6 @@ module picorv32 #(
 		end
 	end
 
-	// INCLUDE INSTR LOOK AHEAD
 	reg last_mem_la_read = 0;
 	reg last_mem_la_write = 0;
 	reg [31:0] last_mem_la_addr;
@@ -2275,130 +2072,4 @@ module picorv32_regs (
 
 	assign rdata1 = regs[~raddr1[4:0]];
 	assign rdata2 = regs[~raddr2[4:0]];
-endmodule
-
-
-/***************************************************************
- * picorv32_pcpi_mul
- ***************************************************************/
-
-module picorv32_pcpi_mul #(
-	parameter STEPS_AT_ONCE = 1,
-	parameter CARRY_CHAIN = 4
-) (
-	input clk, resetn,
-
-	input             pcpi_valid,
-	input      [31:0] pcpi_insn,
-	input      [31:0] pcpi_rs1,
-	input      [31:0] pcpi_rs2,
-	output reg        pcpi_wr,
-	output reg [31:0] pcpi_rd,
-	output reg        pcpi_wait,
-	output reg        pcpi_ready
-);
-	reg instr_mul, instr_mulh, instr_mulhsu, instr_mulhu;
-	wire instr_any_mul = |{instr_mul, instr_mulh, instr_mulhsu, instr_mulhu};
-	wire instr_any_mulh = |{instr_mulh, instr_mulhsu, instr_mulhu};
-	wire instr_rs1_signed = |{instr_mulh, instr_mulhsu};
-	wire instr_rs2_signed = |{instr_mulh};
-
-	reg pcpi_wait_q;
-	wire mul_start = pcpi_wait && !pcpi_wait_q;
-
-	always @(posedge clk) begin
-		instr_mul <= 0;
-		instr_mulh <= 0;
-		instr_mulhsu <= 0;
-		instr_mulhu <= 0;
-
-		if (resetn && pcpi_valid && pcpi_insn[6:0] == 7'b0110011 && pcpi_insn[31:25] == 7'b0000001) begin
-			case (pcpi_insn[14:12])
-				3'b000: instr_mul <= 1;
-				3'b001: instr_mulh <= 1;
-				3'b010: instr_mulhsu <= 1;
-				3'b011: instr_mulhu <= 1;
-			endcase
-		end
-
-		pcpi_wait <= instr_any_mul;
-		pcpi_wait_q <= pcpi_wait;
-	end
-
-	reg [63:0] rs1, rs2, rd, rdx;
-	reg [63:0] next_rs1, next_rs2, this_rs2;
-	reg [63:0] next_rd, next_rdx, next_rdt;
-	reg [6:0] mul_counter;
-	reg mul_waiting;
-	reg mul_finish;
-	integer i, j;
-
-	// carry save accumulator
-	always @* begin
-		next_rd = rd;
-		next_rdx = rdx;
-		next_rs1 = rs1;
-		next_rs2 = rs2;
-
-		for (i = 0; i < STEPS_AT_ONCE; i=i+1) begin
-			this_rs2 = next_rs1[0] ? next_rs2 : 0;
-			if (CARRY_CHAIN == 0) begin
-				next_rdt = next_rd ^ next_rdx ^ this_rs2;
-				next_rdx = ((next_rd & next_rdx) | (next_rd & this_rs2) | (next_rdx & this_rs2)) << 1;
-				next_rd = next_rdt;
-			end else begin
-				next_rdt = 0;
-				for (j = 0; j < 64; j = j + CARRY_CHAIN)
-					{next_rdt[j+CARRY_CHAIN-1], next_rd[j +: CARRY_CHAIN]} =
-							next_rd[j +: CARRY_CHAIN] + next_rdx[j +: CARRY_CHAIN] + this_rs2[j +: CARRY_CHAIN];
-				next_rdx = next_rdt << 1;
-			end
-			next_rs1 = next_rs1 >> 1;
-			next_rs2 = next_rs2 << 1;
-		end
-	end
-
-	always @(posedge clk) begin
-		mul_finish <= 0;
-		if (!resetn) begin
-			mul_waiting <= 1;
-		end else
-		if (mul_waiting) begin
-			if (instr_rs1_signed)
-				rs1 <= $signed(pcpi_rs1);
-			else
-				rs1 <= $unsigned(pcpi_rs1);
-
-			if (instr_rs2_signed)
-				rs2 <= $signed(pcpi_rs2);
-			else
-				rs2 <= $unsigned(pcpi_rs2);
-
-			rd <= 0;
-			rdx <= 0;
-			mul_counter <= (instr_any_mulh ? 63 - STEPS_AT_ONCE : 31 - STEPS_AT_ONCE);
-			mul_waiting <= !mul_start;
-		end else begin
-			rd <= next_rd;
-			rdx <= next_rdx;
-			rs1 <= next_rs1;
-			rs2 <= next_rs2;
-
-			mul_counter <= mul_counter - STEPS_AT_ONCE;
-			if (mul_counter[6]) begin
-				mul_finish <= 1;
-				mul_waiting <= 1;
-			end
-		end
-	end
-
-	always @(posedge clk) begin
-		pcpi_wr <= 0;
-		pcpi_ready <= 0;
-		if (mul_finish && resetn) begin
-			pcpi_wr <= 1;
-			pcpi_ready <= 1;
-			pcpi_rd <= instr_any_mulh ? rd >> 32 : rd;
-		end
-	end
 endmodule
