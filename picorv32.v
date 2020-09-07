@@ -944,44 +944,7 @@ module picorv32 #(
 	end
 	/* END WRITE TO REG */
 
-	// TODO: REGISTERS
-/* USED WITH INTERNAL REG --> TO DELETE OR IMPLEMENT */
-`ifndef PICORV32_REGS
-	always @(posedge clk) begin
-		if (resetn && cpuregs_write && latched_rd)
-`ifdef PICORV32_TESTBUG_001
-			cpuregs[latched_rd ^ 1] <= cpuregs_wrdata;
-`elsif PICORV32_TESTBUG_002
-			cpuregs[latched_rd] <= cpuregs_wrdata ^ 1;
-`else
-			cpuregs[latched_rd] <= cpuregs_wrdata;
-`endif
-	end
-
-	integer f;
-	always @* begin
-		for (f = 0; f < THREADS; f = f + 1)
-			decoded_rs[f] = 'bx;
-		if (ENABLE_REGS_DUALPORT) begin
-`ifndef RISCV_FORMAL_BLACKBOX_REGS
-			cpuregs_rs1 = decoded_rs1 ? cpuregs[decoded_rs1] : 0;
-			cpuregs_rs2 = decoded_rs2 ? cpuregs[decoded_rs2] : 0;
-`else
-			cpuregs_rs1 = decoded_rs1 ? $anyseq : 0;
-			cpuregs_rs2 = decoded_rs2 ? $anyseq : 0;
-`endif
-		end else begin
-			decoded_rs = (cpu_state == cpu_state_ld_rs2) ? decoded_rs2 : decoded_rs1;
-`ifndef RISCV_FORMAL_BLACKBOX_REGS
-			cpuregs_rs1 = decoded_rs ? cpuregs[decoded_rs] : 0;
-`else
-			cpuregs_rs1 = decoded_rs ? $anyseq : 0;
-`endif
-			cpuregs_rs2 = cpuregs_rs1;
-		end
-	end
-`else
-/* INSTANTIATE EXTERNAL REG */
+	/* INSTANTIATE EXTERNAL REG */
 	wire [31:0] cpuregs_rdata1 [0:THREADS-1];
 	wire [31:0] cpuregs_rdata2 [0:THREADS-1];
 
@@ -1024,7 +987,6 @@ module picorv32 #(
 			end
 		end
 	endgenerate
-`endif
 
 	integer k;
 	/* MAIN CPU LOOP */
