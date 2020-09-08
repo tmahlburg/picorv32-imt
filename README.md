@@ -2,7 +2,7 @@
 PicoRV32-imt - A Size-Optimized RISC-V CPU extended with IMT
 ============================================================
 
-PicoRV32-imt is a CPU core based on Claire Wolf's [PicoRV32](https://github.com/cliffordwolf/picorv32). To simplify the implementation of interleaved multithreading in this core, some features of the source have been dropped (for now). This core just implements the [RISC-V RV32I Instruction Set](http://riscv.org/). The interrupt controller of the original is still there but yet to be tested. This CPU has not yet successfully run on real hardware, but it works well in simulation.
+PicoRV32-imt is a CPU core based on Claire Wolf's [PicoRV32](https://github.com/cliffordwolf/picorv32) and implementing IMT with two threads. To simplify the implementation of interleaved multithreading in this core, some features of the source have been dropped (for now). This core just implements the [RISC-V RV32I Instruction Set](http://riscv.org/). The interrupt controller of the original is still there but yet to be tested. This CPU has not yet successfully run on real hardware, but it works well in simulation.
 
 Tools (gcc, binutils, etc..) can be obtained via the [RISC-V Website](https://riscv.org/software-status/).
 The examples bundled with PicoRV32-imt expect various RV32 toolchains to be installed in `/opt/riscv32i`. See
