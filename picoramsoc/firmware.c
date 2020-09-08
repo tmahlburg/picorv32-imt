@@ -33,12 +33,12 @@ extern uint32_t sram;
 #define reg_uart_clkdiv (*(volatile uint32_t*)0x02000004)
 #define reg_uart_data (*(volatile uint32_t*)0x02000008)
 #define reg_leds (*(volatile uint32_t*)0x03000000)
-#define THREAD_COUNT 2
 
 // --------------------------------------------------------
 
 int lock;
-int counter;
+int counter_1;
+int counter_2;
 
 void putchar(char c)
 {
@@ -157,11 +157,15 @@ void main()
             "bne t0, t1, .ID_NEQ_1\n\t"
             "j .THREAD_1\n"
             ".ID_NEQ_1:\n\t"
+            "li t1, 2\n\t"
+            "bne t0, t1, .ID_NEQ2\n\t"
+            "j .THREAD_2\n\t"
+            ".ID_NEQ2:\n"
             "j .DONE\n");
     
     __asm__(".THREAD_0:\n\t");
 
-    reg_uart_clkdiv = 87;
+    reg_uart_clkdiv = 500;
     reg_leds = 0;
     
     print("running thread 0");
@@ -171,17 +175,29 @@ void main()
     
     __asm__(".THREAD_1:\n\t");
     
-    int counter = 0;
+    int counter_1 = 0;
     while (lock != 0) {
-        counter++;
+        counter_1++;
+        reg_leds++;
     }
     lock = 1;
     reg_leds = 1;
     print("running thread 1");
     lock = 0;
     
+    __asm(".THREAD_2:\n\t");
+    
+    int counter_2 = 0;
+    while (lock != 0) {
+        counter_2++;
+    }
+    lock = 1;
+    print("running thread 2");
+    lock = 0;
+    
     __asm__(".DONE:\n\t");
     print("work done");
+    
     while(1) {
         __asm__("nop\n\t");
     }
