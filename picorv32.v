@@ -1260,7 +1260,6 @@ module picorv32 #(
 							(* parallel_case *)
 							case (1'b1)
 								is_sb_sh_sw: begin
-									$display("1: ld_rs1_hart reg_op1 %h, hart_id: %0d", reg_op1[ld_rs1_hart], ld_rs1_hart);
 									hart_ready[ld_rs1_hart] = cpu_state_stmem;
 									ld_rs1_hart = no_hart;
 								end
