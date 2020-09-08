@@ -35,3 +35,4 @@
 /synth.log
 /synth.v
 .*.swp
+/vivado_prj/*
