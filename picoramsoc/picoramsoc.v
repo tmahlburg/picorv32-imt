@@ -152,7 +152,7 @@ module picoramsoc(
 
 	always @(posedge clk) begin
 	    ram_ready <= mem_valid && !mem_ready && mem_addr < 4*MEM_WORDS;
-	    instr_ram_ready <= instr_valid && instr_addr < 4*MEM_WORDS;
+	    instr_ram_ready <= instr_valid && !instr_ready && instr_addr < 4*MEM_WORDS;
 	end
 
 	`PICORAMSOC_MEM #(
