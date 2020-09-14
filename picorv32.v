@@ -251,7 +251,6 @@ module picorv32 #(
 	reg [1:0] mem_state;
 	reg [1:0] mem_wordsize;
 	reg [31:0] mem_rdata_word;
-	reg [31:0] mem_rdata_q;
 	reg mem_do_rdata;
 	reg mem_do_wdata;
 
@@ -259,7 +258,6 @@ module picorv32 #(
 
 	assign mem_xfer = mem_valid && mem_ready;
 
-	wire mem_busy = |{mem_do_rdata, mem_do_wdata};
 	wire mem_done = resetn && (mem_xfer && |mem_state && (mem_do_rdata || mem_do_wdata));
 
 	assign mem_la_write = resetn && !mem_state && mem_do_wdata;
@@ -294,12 +292,6 @@ module picorv32 #(
 				endcase
 			end
 		endcase
-	end
-
-	always @(posedge clk) begin
-		if (mem_xfer) begin
-			mem_rdata_q <= mem_rdata;
-		end
 	end
 
 	always @(posedge clk) begin
