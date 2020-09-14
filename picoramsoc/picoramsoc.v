@@ -169,7 +169,7 @@ module picoramsoc(
 endmodule
 
 module picoramsoc_mem #(
-	parameter integer WORDS = 256
+	parameter integer WORDS = 4096
 	) (
 	input clk,
 	input [3:0] wen,
@@ -181,9 +181,8 @@ module picoramsoc_mem #(
 	);
 	reg [31:0] mem [0:WORDS-1];
 
-	initial begin
+	initial
 		$readmemh("basys3_fw.hex", mem);
-	end
 
 	always @(posedge clk) begin
 	    rdata1 <= mem[addr1];
