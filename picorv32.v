@@ -404,16 +404,16 @@ module picorv32 #(
 
 	// Instruction Decoder
 
-	reg instr_lui, instr_auipc, instr_jal, instr_jalr;
-	reg instr_beq, instr_bne, instr_blt, instr_bge, instr_bltu, instr_bgeu;
-	reg instr_lb, instr_lh, instr_lw, instr_lbu, instr_lhu, instr_sb, instr_sh, instr_sw;
-	reg instr_addi, instr_slti, instr_sltiu, instr_xori, instr_ori, instr_andi, instr_slli, instr_srli, instr_srai;
-	reg instr_add, instr_sub, instr_sll, instr_slt, instr_sltu, instr_xor, instr_srl, instr_sra, instr_or, instr_and;
-	reg instr_rdcycle, instr_rdcycleh, instr_rdinstr, instr_rdinstrh, instr_ecall_ebreak;
-	reg instr_getq, instr_setq, instr_retirq, instr_maskirq, instr_waitirq, instr_timer;
+	reg [THREADS-1:0] instr_lui, instr_auipc, instr_jal, instr_jalr;
+	reg [THREADS-1:0] instr_beq, instr_bne, instr_blt, instr_bge, instr_bltu, instr_bgeu;
+	reg [THREADS-1:0] instr_lb, instr_lh, instr_lw, instr_lbu, instr_lhu, instr_sb, instr_sh, instr_sw;
+	reg [THREADS-1:0] instr_addi, instr_slti, instr_sltiu, instr_xori, instr_ori, instr_andi, instr_slli, instr_srli, instr_srai;
+	reg [THREADS-1:0] instr_add, instr_sub, instr_sll, instr_slt, instr_sltu, instr_xor, instr_srl, instr_sra, instr_or, instr_and;
+	reg [THREADS-1:0] instr_rdcycle, instr_rdcycleh, instr_rdinstr, instr_rdinstrh, instr_ecall_ebreak;
+	reg [THREADS-1:0] instr_getq, instr_setq, instr_retirq, instr_maskirq, instr_waitirq, instr_timer;
 	// USED FOR RETURNING THE CURRENT HART_ID
-	reg instr_csrrs;
-	wire instr_trap;
+	reg [THREADS-1:0] instr_csrrs;
+	wire [THREADS-1:0] instr_trap;
 
 	reg [regindex_bits-1:0] decoded_rd [0:THREADS-1];
 	reg [regindex_bits-1:0] decoded_rs1 [0:THREADS-1];
@@ -422,37 +422,42 @@ module picorv32 #(
 	reg [31:0] decoded_imm_j [0:THREADS-1];
 	reg decoder_trigger;
 	reg decoder_trigger_q;
-	reg decoder_pseudo_trigger;
-	reg decoder_pseudo_trigger_q;
 
-	reg is_lui_auipc_jal;
-	reg is_lb_lh_lw_lbu_lhu;
-	reg is_slli_srli_srai;
-	reg is_jalr_addi_slti_sltiu_xori_ori_andi;
-	reg is_sb_sh_sw;
-	reg is_sll_srl_sra;
-	reg is_lui_auipc_jal_jalr_addi_add_sub;
-	reg is_slti_blt_slt;
-	reg is_sltiu_bltu_sltu;
-	reg is_beq_bne_blt_bge_bltu_bgeu;
-	reg is_lbu_lhu_lw;
-	reg is_alu_reg_imm;
-	reg is_alu_reg_reg;
-	reg is_compare;
+	reg [THREADS-1:0] is_lui_auipc_jal;
+	reg [THREADS-1:0] is_lb_lh_lw_lbu_lhu;
+	reg [THREADS-1:0] is_slli_srli_srai;
+	reg [THREADS-1:0] is_jalr_addi_slti_sltiu_xori_ori_andi;
+	reg [THREADS-1:0] is_sb_sh_sw;
+	reg [THREADS-1:0] is_sll_srl_sra;
+	reg [THREADS-1:0] is_lui_auipc_jal_jalr_addi_add_sub;
+	reg [THREADS-1:0] is_slti_blt_slt;
+	reg [THREADS-1:0] is_sltiu_bltu_sltu;
+	reg [THREADS-1:0] is_beq_bne_blt_bge_bltu_bgeu;
+	reg [THREADS-1:0] is_lbu_lhu_lw;
+	reg [THREADS-1:0] is_alu_reg_imm;
+	reg [THREADS-1:0] is_alu_reg_reg;
+	reg [THREADS-1:0] is_compare;
 
-	reg is_csrrs;
+	reg [THREADS-1:0] is_csrrs = 0;
 
-	assign instr_trap = (CATCH_ILLINSN) && !{instr_lui, instr_auipc, instr_jal, instr_jalr,
-			instr_beq, instr_bne, instr_blt, instr_bge, instr_bltu, instr_bgeu,
-			instr_lb, instr_lh, instr_lw, instr_lbu, instr_lhu, instr_sb, instr_sh, instr_sw,
-			instr_addi, instr_slti, instr_sltiu, instr_xori, instr_ori, instr_andi, instr_slli, instr_srli, instr_srai,
-			instr_add, instr_sub, instr_sll, instr_slt, instr_sltu, instr_xor, instr_srl, instr_sra, instr_or, instr_and,
-			instr_rdcycle, instr_rdcycleh, instr_rdinstr, instr_rdinstrh,
-			instr_getq, instr_setq, instr_retirq, instr_maskirq, instr_waitirq, instr_timer, instr_csrrs};
+	wire [THREADS-1:0] is_rdcycle_rdcycleh_rdinstr_rdinstrh;
 
-	wire is_rdcycle_rdcycleh_rdinstr_rdinstrh;
-	assign is_rdcycle_rdcycleh_rdinstr_rdinstrh = |{instr_rdcycle, instr_rdcycleh, instr_rdinstr, instr_rdinstrh};
+	genvar a;
+	generate
+	for (a = 0; a < THREADS; a = a + 1) begin
+		assign instr_trap[a] = (CATCH_ILLINSN) && !{instr_lui[a], instr_auipc[a], instr_jal[a], instr_jalr[a],
+			   instr_beq[a], instr_bne[a], instr_blt[a], instr_bge[a], instr_bltu[a], instr_bgeu[a],
+			   instr_lb[a], instr_lh[a], instr_lw[a], instr_lbu[a], instr_lhu[a], instr_sb[a], instr_sh[a], instr_sw[a],
+			   instr_addi[a], instr_slti[a], instr_sltiu[a], instr_xori[a], instr_ori[a], instr_andi[a], instr_slli[a], instr_srli[a], instr_srai[a],
+			   instr_add[a], instr_sub[a], instr_sll[a], instr_slt[a], instr_sltu[a], instr_xor[a], instr_srl[a], instr_sra[a], instr_or[a], instr_and[a],
+			   instr_rdcycle[a], instr_rdcycleh[a], instr_rdinstr[a], instr_rdinstrh[a],
+			   instr_getq[a], instr_setq[a], instr_retirq[a], instr_maskirq[a], instr_waitirq[a], instr_timer[a], instr_csrrs[a]};
 
+		assign is_rdcycle_rdcycleh_rdinstr_rdinstrh[a] = |{instr_rdcycle[a], instr_rdcycleh[a], instr_rdinstr[a], instr_rdinstrh[a]};
+	end
+	endgenerate
+
+	/* TODO: DEBUG
 	reg [63:0] new_ascii_instr;
 	`FORMAL_KEEP reg [63:0] dbg_ascii_instr;
 	`FORMAL_KEEP reg [31:0] dbg_insn_imm;
@@ -524,6 +529,7 @@ module picorv32 #(
 		if (instr_csrrs)	new_ascii_instr = "csrrs";
 	end
 
+	*/
 	// TODO: DEBUG
 `ifdef DEBUGASM
 	always @(posedge clk) begin
@@ -544,27 +550,29 @@ module picorv32 #(
 	end
 `endif
 
-	reg csr_unknown = 0;
+	reg [THREADS-1:0] csr_unknown;
 
+	integer b;
 	always @(posedge clk) begin
-		is_lbu_lhu_lw <= |{instr_lbu, instr_lhu, instr_lw};
+		for (b = 0; b < THREADS; b = b + 1)
+			is_lbu_lhu_lw[b] <= |{instr_lbu[b], instr_lhu[b], instr_lw[b]};
 
 		if (instr_do_rinst && instr_done) begin
-			instr_lui     <= instr_rdata_latched[6:0] == 7'b0110111;
-			instr_auipc   <= instr_rdata_latched[6:0] == 7'b0010111;
-			instr_jal     <= instr_rdata_latched[6:0] == 7'b1101111;
-			instr_jalr    <= instr_rdata_latched[6:0] == 7'b1100111 && instr_rdata_latched[14:12] == 3'b000;
+			instr_lui[fetch_hart]     <= instr_rdata_latched[6:0] == 7'b0110111;
+			instr_auipc[fetch_hart]   <= instr_rdata_latched[6:0] == 7'b0010111;
+			instr_jal[fetch_hart]     <= instr_rdata_latched[6:0] == 7'b1101111;
+			instr_jalr[fetch_hart]    <= instr_rdata_latched[6:0] == 7'b1100111 && instr_rdata_latched[14:12] == 3'b000;
 			// TODO: IRQ
-			instr_retirq  <= instr_rdata_latched[6:0] == 7'b0001011 && instr_rdata_latched[31:25] == 7'b0000010 && ENABLE_IRQ;
-			instr_waitirq <= instr_rdata_latched[6:0] == 7'b0001011 && instr_rdata_latched[31:25] == 7'b0000100 && ENABLE_IRQ;
+			instr_retirq[fetch_hart]  <= instr_rdata_latched[6:0] == 7'b0001011 && instr_rdata_latched[31:25] == 7'b0000010 && ENABLE_IRQ;
+			instr_waitirq[fetch_hart] <= instr_rdata_latched[6:0] == 7'b0001011 && instr_rdata_latched[31:25] == 7'b0000100 && ENABLE_IRQ;
 
-			instr_csrrs   <= instr_rdata_latched[6:0] == 7'b1110011 && instr_rdata_latched[14:12] == 3'b010;
+			instr_csrrs[fetch_hart]   <= instr_rdata_latched[6:0] == 7'b1110011 && instr_rdata_latched[14:12] == 3'b010;
 
-			is_beq_bne_blt_bge_bltu_bgeu <= instr_rdata_latched[6:0] == 7'b1100011;
-			is_lb_lh_lw_lbu_lhu          <= instr_rdata_latched[6:0] == 7'b0000011;
-			is_sb_sh_sw                  <= instr_rdata_latched[6:0] == 7'b0100011;
-			is_alu_reg_imm               <= instr_rdata_latched[6:0] == 7'b0010011;
-			is_alu_reg_reg               <= instr_rdata_latched[6:0] == 7'b0110011;
+			is_beq_bne_blt_bge_bltu_bgeu[fetch_hart] <= instr_rdata_latched[6:0] == 7'b1100011;
+			is_lb_lh_lw_lbu_lhu[fetch_hart]          <= instr_rdata_latched[6:0] == 7'b0000011;
+			is_sb_sh_sw[fetch_hart]                  <= instr_rdata_latched[6:0] == 7'b0100011;
+			is_alu_reg_imm[fetch_hart]               <= instr_rdata_latched[6:0] == 7'b0010011;
+			is_alu_reg_reg[fetch_hart]               <= instr_rdata_latched[6:0] == 7'b0110011;
 
 			{ decoded_imm_j[fetch_hart][31:20], decoded_imm_j[fetch_hart][10:1], decoded_imm_j[fetch_hart][11], decoded_imm_j[fetch_hart][19:12], decoded_imm_j[fetch_hart][0] } <= $signed({instr_rdata_latched[31:12], 1'b0});
 
@@ -580,68 +588,68 @@ module picorv32 #(
 				decoded_rs1[fetch_hart] <= ENABLE_IRQ_QREGS ? irqregs_offset : 3; // instr_retirq
 		end
 
-		if (decoder_trigger && !decoder_pseudo_trigger) begin
-			instr_beq   <= is_beq_bne_blt_bge_bltu_bgeu && instr_rdata_q[14:12] == 3'b000;
-			instr_bne   <= is_beq_bne_blt_bge_bltu_bgeu && instr_rdata_q[14:12] == 3'b001;
-			instr_blt   <= is_beq_bne_blt_bge_bltu_bgeu && instr_rdata_q[14:12] == 3'b100;
-			instr_bge   <= is_beq_bne_blt_bge_bltu_bgeu && instr_rdata_q[14:12] == 3'b101;
-			instr_bltu  <= is_beq_bne_blt_bge_bltu_bgeu && instr_rdata_q[14:12] == 3'b110;
-			instr_bgeu  <= is_beq_bne_blt_bge_bltu_bgeu && instr_rdata_q[14:12] == 3'b111;
+		if (decoder_trigger) begin
+			instr_beq[fetch_hart]   <= is_beq_bne_blt_bge_bltu_bgeu[fetch_hart] && instr_rdata_q[14:12] == 3'b000;
+			instr_bne[fetch_hart]   <= is_beq_bne_blt_bge_bltu_bgeu[fetch_hart] && instr_rdata_q[14:12] == 3'b001;
+			instr_blt[fetch_hart]   <= is_beq_bne_blt_bge_bltu_bgeu[fetch_hart] && instr_rdata_q[14:12] == 3'b100;
+			instr_bge[fetch_hart]   <= is_beq_bne_blt_bge_bltu_bgeu[fetch_hart] && instr_rdata_q[14:12] == 3'b101;
+			instr_bltu[fetch_hart]  <= is_beq_bne_blt_bge_bltu_bgeu[fetch_hart] && instr_rdata_q[14:12] == 3'b110;
+			instr_bgeu[fetch_hart]  <= is_beq_bne_blt_bge_bltu_bgeu[fetch_hart] && instr_rdata_q[14:12] == 3'b111;
 
-			instr_lb    <= is_lb_lh_lw_lbu_lhu && instr_rdata_q[14:12] == 3'b000;
-			instr_lh    <= is_lb_lh_lw_lbu_lhu && instr_rdata_q[14:12] == 3'b001;
-			instr_lw    <= is_lb_lh_lw_lbu_lhu && instr_rdata_q[14:12] == 3'b010;
-			instr_lbu   <= is_lb_lh_lw_lbu_lhu && instr_rdata_q[14:12] == 3'b100;
-			instr_lhu   <= is_lb_lh_lw_lbu_lhu && instr_rdata_q[14:12] == 3'b101;
+			instr_lb[fetch_hart]    <= is_lb_lh_lw_lbu_lhu[fetch_hart] && instr_rdata_q[14:12] == 3'b000;
+			instr_lh[fetch_hart]    <= is_lb_lh_lw_lbu_lhu[fetch_hart] && instr_rdata_q[14:12] == 3'b001;
+			instr_lw[fetch_hart]    <= is_lb_lh_lw_lbu_lhu[fetch_hart] && instr_rdata_q[14:12] == 3'b010;
+			instr_lbu[fetch_hart]   <= is_lb_lh_lw_lbu_lhu[fetch_hart] && instr_rdata_q[14:12] == 3'b100;
+			instr_lhu[fetch_hart]   <= is_lb_lh_lw_lbu_lhu[fetch_hart] && instr_rdata_q[14:12] == 3'b101;
 
-			instr_sb    <= is_sb_sh_sw && instr_rdata_q[14:12] == 3'b000;
-			instr_sh    <= is_sb_sh_sw && instr_rdata_q[14:12] == 3'b001;
-			instr_sw    <= is_sb_sh_sw && instr_rdata_q[14:12] == 3'b010;
+			instr_sb[fetch_hart]    <= is_sb_sh_sw[fetch_hart] && instr_rdata_q[14:12] == 3'b000;
+			instr_sh[fetch_hart]    <= is_sb_sh_sw[fetch_hart] && instr_rdata_q[14:12] == 3'b001;
+			instr_sw[fetch_hart]    <= is_sb_sh_sw[fetch_hart] && instr_rdata_q[14:12] == 3'b010;
 
-			instr_addi  <= is_alu_reg_imm && instr_rdata_q[14:12] == 3'b000;
-			instr_slti  <= is_alu_reg_imm && instr_rdata_q[14:12] == 3'b010;
-			instr_sltiu <= is_alu_reg_imm && instr_rdata_q[14:12] == 3'b011;
-			instr_xori  <= is_alu_reg_imm && instr_rdata_q[14:12] == 3'b100;
-			instr_ori   <= is_alu_reg_imm && instr_rdata_q[14:12] == 3'b110;
-			instr_andi  <= is_alu_reg_imm && instr_rdata_q[14:12] == 3'b111;
+			instr_addi[fetch_hart]  <= is_alu_reg_imm[fetch_hart] && instr_rdata_q[14:12] == 3'b000;
+			instr_slti[fetch_hart]  <= is_alu_reg_imm[fetch_hart] && instr_rdata_q[14:12] == 3'b010;
+			instr_sltiu[fetch_hart] <= is_alu_reg_imm[fetch_hart] && instr_rdata_q[14:12] == 3'b011;
+			instr_xori[fetch_hart]  <= is_alu_reg_imm[fetch_hart] && instr_rdata_q[14:12] == 3'b100;
+			instr_ori[fetch_hart]   <= is_alu_reg_imm[fetch_hart] && instr_rdata_q[14:12] == 3'b110;
+			instr_andi[fetch_hart]  <= is_alu_reg_imm[fetch_hart] && instr_rdata_q[14:12] == 3'b111;
 
-			instr_slli  <= is_alu_reg_imm && instr_rdata_q[14:12] == 3'b001 && instr_rdata_q[31:25] == 7'b0000000;
-			instr_srli  <= is_alu_reg_imm && instr_rdata_q[14:12] == 3'b101 && instr_rdata_q[31:25] == 7'b0000000;
-			instr_srai  <= is_alu_reg_imm && instr_rdata_q[14:12] == 3'b101 && instr_rdata_q[31:25] == 7'b0100000;
+			instr_slli[fetch_hart]  <= is_alu_reg_imm[fetch_hart] && instr_rdata_q[14:12] == 3'b001 && instr_rdata_q[31:25] == 7'b0000000;
+			instr_srli[fetch_hart]  <= is_alu_reg_imm[fetch_hart] && instr_rdata_q[14:12] == 3'b101 && instr_rdata_q[31:25] == 7'b0000000;
+			instr_srai[fetch_hart]  <= is_alu_reg_imm[fetch_hart] && instr_rdata_q[14:12] == 3'b101 && instr_rdata_q[31:25] == 7'b0100000;
 
-			instr_add   <= is_alu_reg_reg && instr_rdata_q[14:12] == 3'b000 && instr_rdata_q[31:25] == 7'b0000000;
-			instr_sub   <= is_alu_reg_reg && instr_rdata_q[14:12] == 3'b000 && instr_rdata_q[31:25] == 7'b0100000;
-			instr_sll   <= is_alu_reg_reg && instr_rdata_q[14:12] == 3'b001 && instr_rdata_q[31:25] == 7'b0000000;
-			instr_slt   <= is_alu_reg_reg && instr_rdata_q[14:12] == 3'b010 && instr_rdata_q[31:25] == 7'b0000000;
-			instr_sltu  <= is_alu_reg_reg && instr_rdata_q[14:12] == 3'b011 && instr_rdata_q[31:25] == 7'b0000000;
-			instr_xor   <= is_alu_reg_reg && instr_rdata_q[14:12] == 3'b100 && instr_rdata_q[31:25] == 7'b0000000;
-			instr_srl   <= is_alu_reg_reg && instr_rdata_q[14:12] == 3'b101 && instr_rdata_q[31:25] == 7'b0000000;
-			instr_sra   <= is_alu_reg_reg && instr_rdata_q[14:12] == 3'b101 && instr_rdata_q[31:25] == 7'b0100000;
-			instr_or    <= is_alu_reg_reg && instr_rdata_q[14:12] == 3'b110 && instr_rdata_q[31:25] == 7'b0000000;
-			instr_and   <= is_alu_reg_reg && instr_rdata_q[14:12] == 3'b111 && instr_rdata_q[31:25] == 7'b0000000;
+			instr_add[fetch_hart] <= is_alu_reg_reg[fetch_hart] && instr_rdata_q[14:12] == 3'b000 && instr_rdata_q[31:25] == 7'b0000000;
+			instr_sub[fetch_hart] <= is_alu_reg_reg[fetch_hart] && instr_rdata_q[14:12] == 3'b000 && instr_rdata_q[31:25] == 7'b0100000;
+			instr_sll[fetch_hart] <= is_alu_reg_reg[fetch_hart] && instr_rdata_q[14:12] == 3'b001 && instr_rdata_q[31:25] == 7'b0000000;
+			instr_slt[fetch_hart] <= is_alu_reg_reg[fetch_hart] && instr_rdata_q[14:12] == 3'b010 && instr_rdata_q[31:25] == 7'b0000000;
+			instr_sltu[fetch_hart] <= is_alu_reg_reg[fetch_hart] && instr_rdata_q[14:12] == 3'b011 && instr_rdata_q[31:25] == 7'b0000000;
+			instr_xor[fetch_hart] <= is_alu_reg_reg[fetch_hart] && instr_rdata_q[14:12] == 3'b100 && instr_rdata_q[31:25] == 7'b0000000;
+			instr_srl[fetch_hart] <= is_alu_reg_reg[fetch_hart] && instr_rdata_q[14:12] == 3'b101 && instr_rdata_q[31:25] == 7'b0000000;
+			instr_sra[fetch_hart] <= is_alu_reg_reg[fetch_hart] && instr_rdata_q[14:12] == 3'b101 && instr_rdata_q[31:25] == 7'b0100000;
+			instr_or[fetch_hart] <= is_alu_reg_reg[fetch_hart] && instr_rdata_q[14:12] == 3'b110 && instr_rdata_q[31:25] == 7'b0000000;
+			instr_and[fetch_hart] <= is_alu_reg_reg[fetch_hart] && instr_rdata_q[14:12] == 3'b111 && instr_rdata_q[31:25] == 7'b0000000;
 
-			instr_rdcycle  <= ((instr_rdata_q[6:0] == 7'b1110011 && instr_rdata_q[31:12] == 'b11000000000000000010) ||
-			                   (instr_rdata_q[6:0] == 7'b1110011 && instr_rdata_q[31:12] == 'b11000000000100000010)) && ENABLE_COUNTERS;
-			instr_rdcycleh <= ((instr_rdata_q[6:0] == 7'b1110011 && instr_rdata_q[31:12] == 'b11001000000000000010) ||
-			                   (instr_rdata_q[6:0] == 7'b1110011 && instr_rdata_q[31:12] == 'b11001000000100000010)) && ENABLE_COUNTERS && ENABLE_COUNTERS64;
-			instr_rdinstr  <=  (instr_rdata_q[6:0] == 7'b1110011 && instr_rdata_q[31:12] == 'b11000000001000000010) && ENABLE_COUNTERS;
-			instr_rdinstrh <=  (instr_rdata_q[6:0] == 7'b1110011 && instr_rdata_q[31:12] == 'b11001000001000000010) && ENABLE_COUNTERS && ENABLE_COUNTERS64;
+			instr_rdcycle[fetch_hart]  <= ((instr_rdata_q[6:0] == 7'b1110011 && instr_rdata_q[31:12] == 'b11000000000000000010) ||
+			                    		  (instr_rdata_q[6:0] == 7'b1110011 && instr_rdata_q[31:12] == 'b11000000000100000010)) && ENABLE_COUNTERS;
+			instr_rdcycleh[fetch_hart] <= ((instr_rdata_q[6:0] == 7'b1110011 && instr_rdata_q[31:12] == 'b11001000000000000010) ||
+			                              (instr_rdata_q[6:0] == 7'b1110011 && instr_rdata_q[31:12] == 'b11001000000100000010)) && ENABLE_COUNTERS && ENABLE_COUNTERS64;
+			instr_rdinstr[fetch_hart]  <=  (instr_rdata_q[6:0] == 7'b1110011 && instr_rdata_q[31:12] == 'b11000000001000000010) && ENABLE_COUNTERS;
+			instr_rdinstrh[fetch_hart] <=  (instr_rdata_q[6:0] == 7'b1110011 && instr_rdata_q[31:12] == 'b11001000001000000010) && ENABLE_COUNTERS && ENABLE_COUNTERS64;
 
-			instr_ecall_ebreak <= instr_rdata_q[6:0] == 7'b1110011 && !instr_rdata_q[31:21] && !instr_rdata_q[19:7];
+			instr_ecall_ebreak[fetch_hart] <= instr_rdata_q[6:0] == 7'b1110011 && !instr_rdata_q[31:21] && !instr_rdata_q[19:7];
 
 			// TODO: IRQ
-			instr_getq    <= instr_rdata_q[6:0] == 7'b0001011 && instr_rdata_q[31:25] == 7'b0000000 && ENABLE_IRQ && ENABLE_IRQ_QREGS;
-			instr_setq    <= instr_rdata_q[6:0] == 7'b0001011 && instr_rdata_q[31:25] == 7'b0000001 && ENABLE_IRQ && ENABLE_IRQ_QREGS;
-			instr_maskirq <= instr_rdata_q[6:0] == 7'b0001011 && instr_rdata_q[31:25] == 7'b0000011 && ENABLE_IRQ;
-			instr_timer   <= instr_rdata_q[6:0] == 7'b0001011 && instr_rdata_q[31:25] == 7'b0000101 && ENABLE_IRQ && ENABLE_IRQ_TIMER;
+			instr_getq[fetch_hart]    <= instr_rdata_q[6:0] == 7'b0001011 && instr_rdata_q[31:25] == 7'b0000000 && ENABLE_IRQ && ENABLE_IRQ_QREGS;
+			instr_setq[fetch_hart]    <= instr_rdata_q[6:0] == 7'b0001011 && instr_rdata_q[31:25] == 7'b0000001 && ENABLE_IRQ && ENABLE_IRQ_QREGS;
+			instr_maskirq[fetch_hart] <= instr_rdata_q[6:0] == 7'b0001011 && instr_rdata_q[31:25] == 7'b0000011 && ENABLE_IRQ;
+			instr_timer[fetch_hart]   <= instr_rdata_q[6:0] == 7'b0001011 && instr_rdata_q[31:25] == 7'b0000101 && ENABLE_IRQ && ENABLE_IRQ_TIMER;
 
-			is_slli_srli_srai <= is_alu_reg_imm && |{
+			is_slli_srli_srai[fetch_hart] <= is_alu_reg_imm[fetch_hart] && |{
 				instr_rdata_q[14:12] == 3'b001 && instr_rdata_q[31:25] == 7'b0000000,
 				instr_rdata_q[14:12] == 3'b101 && instr_rdata_q[31:25] == 7'b0000000,
 				instr_rdata_q[14:12] == 3'b101 && instr_rdata_q[31:25] == 7'b0100000
 			};
 
-			is_jalr_addi_slti_sltiu_xori_ori_andi <= instr_jalr || is_alu_reg_imm && |{
+			is_jalr_addi_slti_sltiu_xori_ori_andi[fetch_hart] <= instr_jalr[fetch_hart] || is_alu_reg_imm[fetch_hart] && |{
 				instr_rdata_q[14:12] == 3'b000,
 				instr_rdata_q[14:12] == 3'b010,
 				instr_rdata_q[14:12] == 3'b011,
@@ -650,31 +658,31 @@ module picorv32 #(
 				instr_rdata_q[14:12] == 3'b111
 			};
 
-			is_sll_srl_sra <= is_alu_reg_reg && |{
+			is_sll_srl_sra[fetch_hart] <= is_alu_reg_reg[fetch_hart] && |{
 				instr_rdata_q[14:12] == 3'b001 && instr_rdata_q[31:25] == 7'b0000000,
 				instr_rdata_q[14:12] == 3'b101 && instr_rdata_q[31:25] == 7'b0000000,
 				instr_rdata_q[14:12] == 3'b101 && instr_rdata_q[31:25] == 7'b0100000
 			};
 
-			is_lui_auipc_jal_jalr_addi_add_sub <= 0;
-			is_compare <= 0;
+			is_lui_auipc_jal_jalr_addi_add_sub[fetch_hart] <= 0;
+			is_compare[fetch_hart] <= 0;
 
 			(* parallel_case *)
 			case (1'b1)
-				instr_jal:
+				instr_jal[fetch_hart]:
 					decoded_imm[fetch_hart] <= decoded_imm_j[fetch_hart];
-				|{instr_lui, instr_auipc}:
+				|{instr_lui[fetch_hart], instr_auipc[fetch_hart]}:
 					decoded_imm[fetch_hart] <= instr_rdata_q[31:12] << 12;
-				|{instr_jalr, is_lb_lh_lw_lbu_lhu, is_alu_reg_imm}:
+				|{instr_jalr[fetch_hart], is_lb_lh_lw_lbu_lhu[fetch_hart], is_alu_reg_imm[fetch_hart]}:
 					decoded_imm[fetch_hart] <= $signed(instr_rdata_q[31:20]);
-				is_beq_bne_blt_bge_bltu_bgeu:
+				is_beq_bne_blt_bge_bltu_bgeu[fetch_hart]:
 					decoded_imm[fetch_hart] <= $signed({instr_rdata_q[31], instr_rdata_q[7], instr_rdata_q[30:25], instr_rdata_q[11:8], 1'b0});
-				is_sb_sh_sw:
+				is_sb_sh_sw[fetch_hart]:
 					decoded_imm[fetch_hart] <= $signed({instr_rdata_q[31:25], instr_rdata_q[11:7]});
-				is_csrrs:
+				is_csrrs[fetch_hart]:
 					// only handle requests for the mhartid csr
 					if (instr_rdata_q[31:20] != 'hf14)
-						csr_unknown <= 1;
+						csr_unknown[fetch_hart] <= 1;
 				default:
 					decoded_imm[fetch_hart] <= 1'bx;
 			endcase
@@ -712,13 +720,15 @@ module picorv32 #(
 			instr_csrrs <= 0;
 		end
 
-		is_csrrs <= instr_csrrs;
+		for (b = 0; b < THREADS; b = b + 1) begin
+			is_csrrs[b] <= instr_csrrs[b];
 
-		is_lui_auipc_jal <= |{instr_lui, instr_auipc, instr_jal};
-		is_lui_auipc_jal_jalr_addi_add_sub <= |{instr_lui, instr_auipc, instr_jal, instr_jalr, instr_addi, instr_add, instr_sub};
-		is_slti_blt_slt <= |{instr_slti, instr_blt, instr_slt};
-		is_sltiu_bltu_sltu <= |{instr_sltiu, instr_bltu, instr_sltu};
-		is_compare <= |{is_beq_bne_blt_bge_bltu_bgeu, instr_slti, instr_slt, instr_sltiu, instr_sltu};
+			is_lui_auipc_jal[b] <= |{instr_lui[b], instr_auipc[b], instr_jal[b]};
+			is_lui_auipc_jal_jalr_addi_add_sub[b] <= |{instr_lui[b], instr_auipc[b], instr_jal[b], instr_jalr[b], instr_addi[b], instr_add[b], instr_sub[b]};
+			is_slti_blt_slt[b] <= |{instr_slti[b], instr_blt[b], instr_slt[b]};
+			is_sltiu_bltu_sltu[b] <= |{instr_sltiu[b], instr_bltu[b], instr_sltu[b]};
+			is_compare[b] <= |{is_beq_bne_blt_bge_bltu_bgeu[b], instr_slti[b], instr_slt[b], instr_sltiu[b], instr_sltu[b]};
+		end
 	end
 
 
@@ -791,21 +801,21 @@ module picorv32 #(
 	/* ALU */
 	generate if (TWO_CYCLE_ALU) begin
 		always @(posedge clk) begin
-			alu_add_sub <= instr_sub ? reg_op1[exec_hart] - reg_op2[exec_hart] : reg_op1[exec_hart] + reg_op2[exec_hart];
+			alu_add_sub <= instr_sub[exec_hart] ? reg_op1[exec_hart] - reg_op2[exec_hart] : reg_op1[exec_hart] + reg_op2[exec_hart];
 			alu_eq <= reg_op1[exec_hart] == reg_op2[exec_hart];
 			alu_lts <= $signed(reg_op1[exec_hart]) < $signed(reg_op2[exec_hart]);
 			alu_ltu <= reg_op1[exec_hart] < reg_op2[exec_hart];
 			alu_shl <= reg_op1[exec_hart] << reg_op2[exec_hart][4:0];
-			alu_shr <= $signed({instr_sra || instr_srai ? reg_op1[exec_hart][31] : 1'b0, reg_op1[exec_hart]}) >>> reg_op2[exec_hart][4:0];
+			alu_shr <= $signed({instr_sra[exec_hart] || instr_srai[exec_hart] ? reg_op1[exec_hart][31] : 1'b0, reg_op1[exec_hart]}) >>> reg_op2[exec_hart][4:0];
 		end
 	end else begin
 		always @* begin
-			alu_add_sub = instr_sub ? reg_op1[exec_hart] - reg_op2[exec_hart] : reg_op1[exec_hart] + reg_op2[exec_hart];
+			alu_add_sub = instr_sub[exec_hart] ? reg_op1[exec_hart] - reg_op2[exec_hart] : reg_op1[exec_hart] + reg_op2[exec_hart];
 			alu_eq = reg_op1[exec_hart] == reg_op2[exec_hart];
 			alu_lts = $signed(reg_op1[exec_hart]) < $signed(reg_op2[exec_hart]);
 			alu_ltu = reg_op1[exec_hart] < reg_op2[exec_hart];
 			alu_shl = reg_op1[exec_hart] << reg_op2[exec_hart][4:0];
-			alu_shr = $signed({instr_sra || instr_srai ? reg_op1[exec_hart][31] : 1'b0, reg_op1[exec_hart]}) >>> reg_op2[exec_hart][4:0];
+			alu_shr = $signed({instr_sra[exec_hart] || instr_srai[exec_hart] ? reg_op1[exec_hart][31] : 1'b0, reg_op1[exec_hart]}) >>> reg_op2[exec_hart][4:0];
 		end
 	end endgenerate
 
@@ -814,36 +824,36 @@ module picorv32 #(
 			alu_out_0[exec_hart] = 'bx;
 			(* parallel_case, full_case *)
 			case (1'b1)
-				instr_beq:
+				instr_beq[exec_hart]:
 					alu_out_0[exec_hart] = alu_eq;
-				instr_bne:
+				instr_bne[exec_hart]:
 					alu_out_0[exec_hart] = !alu_eq;
-				instr_bge:
+				instr_bge[exec_hart]:
 					alu_out_0[exec_hart] = !alu_lts;
-				instr_bgeu:
+				instr_bgeu[exec_hart]:
 					alu_out_0[exec_hart] = !alu_ltu;
-				is_slti_blt_slt && (!TWO_CYCLE_COMPARE || !{instr_beq,instr_bne,instr_bge,instr_bgeu}):
+				is_slti_blt_slt[exec_hart] && (!TWO_CYCLE_COMPARE || !{instr_beq[exec_hart],instr_bne[exec_hart],instr_bge[exec_hart],instr_bgeu[exec_hart]}):
 					alu_out_0[exec_hart] = alu_lts;
-				is_sltiu_bltu_sltu && (!TWO_CYCLE_COMPARE || !{instr_beq,instr_bne,instr_bge,instr_bgeu}):
+				is_sltiu_bltu_sltu[exec_hart] && (!TWO_CYCLE_COMPARE || !{instr_beq[exec_hart],instr_bne[exec_hart],instr_bge[exec_hart],instr_bgeu[exec_hart]}):
 					alu_out_0[exec_hart] = alu_ltu;
 			endcase
 
 			alu_out[exec_hart] = 'bx;
 			(* parallel_case, full_case *)
 			case (1'b1)
-				is_lui_auipc_jal_jalr_addi_add_sub:
+				is_lui_auipc_jal_jalr_addi_add_sub[exec_hart]:
 					alu_out[exec_hart] = alu_add_sub;
-				is_compare:
+				is_compare[exec_hart]:
 					alu_out[exec_hart] = alu_out_0[exec_hart];
-				instr_xori || instr_xor:
+				instr_xori[exec_hart] || instr_xor[exec_hart]:
 					alu_out[exec_hart] = reg_op1[exec_hart] ^ reg_op2[exec_hart];
-				instr_ori || instr_or:
+				instr_ori[exec_hart] || instr_or[exec_hart]:
 					alu_out[exec_hart] = reg_op1[exec_hart] | reg_op2[exec_hart];
-				instr_andi || instr_and:
+				instr_andi[exec_hart] || instr_and[exec_hart]:
 					alu_out[exec_hart] = reg_op1[exec_hart] & reg_op2[exec_hart];
-				BARREL_SHIFTER && (instr_sll || instr_slli):
+				BARREL_SHIFTER && (instr_sll[exec_hart] || instr_slli[exec_hart]):
 					alu_out[exec_hart] = alu_shl;
-				BARREL_SHIFTER && (instr_srl || instr_srli || instr_sra || instr_srai):
+				BARREL_SHIFTER && (instr_srl[exec_hart] || instr_srli[exec_hart]|| instr_sra[exec_hart]|| instr_srai[exec_hart]):
 					alu_out[exec_hart] = alu_shr;
 			endcase
 		end
@@ -968,8 +978,6 @@ module picorv32 #(
 
 		decoder_trigger <= instr_do_rinst && instr_done;
 		decoder_trigger_q <= decoder_trigger;
-		decoder_pseudo_trigger <= 0;
-		decoder_pseudo_trigger_q <= decoder_pseudo_trigger;
 		// TODO: IRQ
 		do_waitirq <= 0;
 
@@ -1093,7 +1101,7 @@ module picorv32 #(
 						count_instr <= count_instr + 1;
 						if (!ENABLE_COUNTERS64) count_instr[63:32] <= 0;
 					end
-					if (instr_jal) begin
+					if (instr_jal[fetch_hart]) begin
 						reg_next_pc[fetch_hart] <= current_pc + decoded_imm_j[fetch_hart];
 						latched_branch[fetch_hart] <= 1;
 					end else begin
@@ -1110,7 +1118,7 @@ module picorv32 #(
 
 				(* parallel_case *)
 				case (1'b1)
-					CATCH_ILLINSN && instr_trap: begin
+					CATCH_ILLINSN && instr_trap[ld_rs1_hart]: begin
 						// TODO: IRQ
 						`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
 						if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
@@ -1122,24 +1130,24 @@ module picorv32 #(
 							ld_rs1_hart = no_hart;
 						end
 					end
-					ENABLE_COUNTERS && is_rdcycle_rdcycleh_rdinstr_rdinstrh: begin
+					ENABLE_COUNTERS && is_rdcycle_rdcycleh_rdinstr_rdinstrh[ld_rs1_hart]: begin
 						(* parallel_case, full_case *)
 						case (1'b1)
-							instr_rdcycle:
+							instr_rdcycle[ld_rs1_hart]:
 								reg_out[ld_rs1_hart] <= count_cycle[31:0];
-							instr_rdcycleh && ENABLE_COUNTERS64:
+							instr_rdcycleh[ld_rs1_hart] && ENABLE_COUNTERS64:
 								reg_out[ld_rs1_hart] <= count_cycle[63:32];
-							instr_rdinstr:
+							instr_rdinstr[ld_rs1_hart]:
 								reg_out[ld_rs1_hart] <= count_instr[31:0];
-							instr_rdinstrh && ENABLE_COUNTERS64:
+							instr_rdinstrh[ld_rs1_hart] && ENABLE_COUNTERS64:
 								reg_out[ld_rs1_hart] <= count_instr[63:32];
 						endcase
 						latched_store[ld_rs1_hart] <= 1;
 						hart_ready[ld_rs1_hart] = cpu_state_fetch;
 						ld_rs1_hart = no_hart;
 					end
-					is_lui_auipc_jal: begin
-						reg_op1[ld_rs1_hart] <= instr_lui ? 0 : reg_pc[ld_rs1_hart];
+					is_lui_auipc_jal[ld_rs1_hart]: begin
+						reg_op1[ld_rs1_hart] <= instr_lui[ld_rs1_hart] ? 0 : reg_pc[ld_rs1_hart];
 						reg_op2[ld_rs1_hart] <= decoded_imm[ld_rs1_hart];
 						if (TWO_CYCLE_ALU)
 							alu_wait <= 1;
@@ -1147,80 +1155,88 @@ module picorv32 #(
 						ld_rs1_hart = no_hart;
 					end
 					// TODO: IRQ
-					ENABLE_IRQ && ENABLE_IRQ_QREGS && instr_getq: begin
+					ENABLE_IRQ && ENABLE_IRQ_QREGS && instr_getq[ld_rs1_hart]: begin
 						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1[ld_rs1_hart], cpuregs_rs1[ld_rs1_hart]);)
 						reg_out[ld_rs1_hart] <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val_valid <= 1;
+						//TODO: DEBUG
+						//dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+						//dbg_rs1val_valid <= 1;
 						latched_store[ld_rs1_hart] <= 1;
 						hart_ready[ld_rs1_hart] = cpu_state_fetch;
 						ld_rs1_hart = no_hart;
 					end
-					ENABLE_IRQ && ENABLE_IRQ_QREGS && instr_setq: begin
+					ENABLE_IRQ && ENABLE_IRQ_QREGS && instr_setq[ld_rs1_hart]: begin
 						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1[ld_rs1_hart], cpuregs_rs1[ld_rs1_hart]);)
 						reg_out[ld_rs1_hart] <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val_valid <= 1;
+						//TODO: DEBUG
+						//dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+						//dbg_rs1val_valid <= 1;
 						latched_rd[ld_rs1_hart] <= latched_rd[ld_rs1_hart] | irqregs_offset;
 						latched_store[ld_rs1_hart] <= 1;
 						hart_ready[ld_rs1_hart] = cpu_state_fetch;
 						ld_rs1_hart = no_hart;
 					end
-					ENABLE_IRQ && instr_retirq: begin
+					ENABLE_IRQ && instr_retirq[ld_rs1_hart]: begin
 						eoi <= 0;
 						irq_active <= 0;
 						latched_branch[fetch_hart] <= 1;
 						latched_store[ld_rs1_hart] <= 1;
 						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1[ld_rs1_hart], cpuregs_rs1[ld_rs1_hart]);)
 						reg_out[ld_rs1_hart] <= CATCH_MISALIGN ? (cpuregs_rs1[ld_rs1_hart] & 32'h fffffffe) : cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val_valid <= 1;
+						//TODO: DEBUG
+						//dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+						//dbg_rs1val_valid <= 1;
 						hart_ready[ld_rs1_hart] = cpu_state_fetch;
 						ld_rs1_hart = no_hart;
 					end
-					ENABLE_IRQ && instr_maskirq: begin
+					ENABLE_IRQ && instr_maskirq[ld_rs1_hart]: begin
 						latched_store[ld_rs1_hart] <= 1;
 						reg_out[ld_rs1_hart] <= irq_mask;
 						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1[ld_rs1_hart], cpuregs_rs1[ld_rs1_hart]);)
 						irq_mask <= cpuregs_rs1[ld_rs1_hart] | MASKED_IRQ;
-						dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val_valid <= 1;
+						//TODO: DEBUG
+						//dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+						//dbg_rs1val_valid <= 1;
 						hart_ready[ld_rs1_hart] = cpu_state_fetch;
 						ld_rs1_hart = no_hart;
 					end
-					ENABLE_IRQ && ENABLE_IRQ_TIMER && instr_timer: begin
+					ENABLE_IRQ && ENABLE_IRQ_TIMER && instr_timer[ld_rs1_hart]: begin
 						latched_store[ld_rs1_hart] <= 1;
 						reg_out[ld_rs1_hart] <= timer;
 						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1[ld_rs1_hart], cpuregs_rs1[ld_rs1_hart]);)
 						timer <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val_valid <= 1;
+						//TODO: DEBUG
+						//dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+						//dbg_rs1val_valid <= 1;
 						hart_ready[ld_rs1_hart] = cpu_state_fetch;
 						ld_rs1_hart = no_hart;
 					end
-					is_lb_lh_lw_lbu_lhu && !instr_trap: begin
+					is_lb_lh_lw_lbu_lhu[ld_rs1_hart] && !instr_trap[ld_rs1_hart]: begin
 						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1[ld_rs1_hart], cpuregs_rs1[ld_rs1_hart]);)
 						reg_op1[ld_rs1_hart] <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val_valid <= 1;
+						//TODO: DEBUG
+						//dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+						//dbg_rs1val_valid <= 1;
 						hart_ready[ld_rs1_hart] = cpu_state_ldmem;
 						ld_rs1_hart = no_hart;
 					end
-					is_slli_srli_srai && !BARREL_SHIFTER: begin
+					is_slli_srli_srai[ld_rs1_hart] && !BARREL_SHIFTER: begin
 						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1[ld_rs1_hart], cpuregs_rs1[ld_rs1_hart]);)
 						reg_op1[ld_rs1_hart] <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val_valid <= 1;
+						//TODO: DEBUG
+						//dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+						//dbg_rs1val_valid <= 1;
 						reg_sh[ld_rs1_hart] <= decoded_rs2[ld_rs1_hart];
 						hart_ready[ld_rs1_hart] = cpu_state_shift;
 						ld_rs1_hart = no_hart;
 					end
-					is_jalr_addi_slti_sltiu_xori_ori_andi, is_slli_srli_srai && BARREL_SHIFTER: begin
+					is_jalr_addi_slti_sltiu_xori_ori_andi[ld_rs1_hart], is_slli_srli_srai[ld_rs1_hart] && BARREL_SHIFTER: begin
 						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1[ld_rs1_hart], cpuregs_rs1[ld_rs1_hart]);)
 						reg_op1[ld_rs1_hart] <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val_valid <= 1;
-						reg_op2[ld_rs1_hart] <= is_slli_srli_srai && BARREL_SHIFTER ? decoded_rs2[ld_rs1_hart] : decoded_imm[ld_rs1_hart];
+						//TODO: DEBUG
+						//dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+						//dbg_rs1val_valid <= 1;
+						reg_op2[ld_rs1_hart] <= is_slli_srli_srai[ld_rs1_hart] && BARREL_SHIFTER ? decoded_rs2[ld_rs1_hart] : decoded_imm[ld_rs1_hart];
 						if (TWO_CYCLE_ALU)
 							alu_wait <= 1;
 						hart_ready[ld_rs1_hart] = cpu_state_exec;
@@ -1228,28 +1244,30 @@ module picorv32 #(
 					end
 					default: begin
 						`debug($display("LD_RS1: %2d 0x%08x", decoded_rs1[ld_rs1_hart], cpuregs_rs1[ld_rs1_hart]);)
-					reg_op1[ld_rs1_hart] <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
-						dbg_rs1val_valid <= 1;
+						reg_op1[ld_rs1_hart] <= cpuregs_rs1[ld_rs1_hart];
+						//TODO: DEBUG
+						//dbg_rs1val <= cpuregs_rs1[ld_rs1_hart];
+						//dbg_rs1val_valid <= 1;
 						if (ENABLE_REGS_DUALPORT) begin
 							`debug($display("LD_RS2: %2d 0x%08x", decoded_rs2[ld_rs1_hart], cpuregs_rs2[ld_rs1_hart]);)
 							reg_sh[ld_rs1_hart] <= cpuregs_rs2[ld_rs1_hart];
 							reg_op2[ld_rs1_hart] <= cpuregs_rs2[ld_rs1_hart];
-							dbg_rs2val <= cpuregs_rs2[ld_rs1_hart];
-							dbg_rs2val_valid <= 1;
+							//TODO: DEBUG
+							//dbg_rs2val <= cpuregs_rs2[ld_rs1_hart];
+							//dbg_rs2val_valid <= 1;
 							(* parallel_case *)
 							case (1'b1)
-								is_sb_sh_sw: begin
+								is_sb_sh_sw[ld_rs1_hart]: begin
 									hart_ready[ld_rs1_hart] = cpu_state_stmem;
 									ld_rs1_hart = no_hart;
 								end
-								is_sll_srl_sra && !BARREL_SHIFTER: begin
+								is_sll_srl_sra[ld_rs1_hart] && !BARREL_SHIFTER: begin
 									hart_ready[ld_rs1_hart] = cpu_state_shift;
 									ld_rs1_hart = no_hart;
 								end
 								default: begin
-									if (TWO_CYCLE_ALU || (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu)) begin
-										alu_wait_2 <= TWO_CYCLE_ALU && (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu);
+									if (TWO_CYCLE_ALU || (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu[ld_rs1_hart])) begin
+										alu_wait_2 <= TWO_CYCLE_ALU && (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu[ld_rs1_hart]);
 										alu_wait <= 1;
 									end else
 									hart_ready[ld_rs1_hart] = cpu_state_exec;
@@ -1270,23 +1288,24 @@ module picorv32 #(
 				`debug($display("LD_RS2: %2d 0x%08x", decoded_rs2[ld_rs2_hart], cpuregs_rs2[ld_rs2_hart]);)
 				reg_sh[ld_rs2_hart] <= cpuregs_rs2[ld_rs2_hart];
 				reg_op2[ld_rs2_hart] <= cpuregs_rs2[ld_rs2_hart];
-				dbg_rs2val <= cpuregs_rs2[ld_rs2_hart];
-				dbg_rs2val_valid <= 1;
+				//TODO: DEBUG
+				//dbg_rs2val <= cpuregs_rs2[ld_rs2_hart];
+				//dbg_rs2val_valid <= 1;
 
 				(* parallel_case *)
 				case (1'b1)
-					is_sb_sh_sw: begin
+					is_sb_sh_sw[ld_rs2_hart]: begin
 						hart_ready[ld_rs2_hart] = cpu_state_stmem;
 						ld_rs2_hart = no_hart;
 						instr_do_rinst <= 1;
 					end
-					is_sll_srl_sra && !BARREL_SHIFTER: begin
+					is_sll_srl_sra[ld_rs2_hart] && !BARREL_SHIFTER: begin
 						hart_ready[ld_rs2_hart] = cpu_state_shift;
 						ld_rs2_hart = no_hart;
 					end
 					default: begin
-						if (TWO_CYCLE_ALU || (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu)) begin
-							alu_wait_2 <= TWO_CYCLE_ALU && (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu);
+						if (TWO_CYCLE_ALU || (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu[ld_rs2_hart])) begin
+							alu_wait_2 <= TWO_CYCLE_ALU && (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu[ld_rs2_hart]);
 							alu_wait <= 1;
 						end
 						hart_ready[ld_rs2_hart] = cpu_state_exec;
@@ -1300,19 +1319,19 @@ module picorv32 #(
 				if ((TWO_CYCLE_ALU || TWO_CYCLE_COMPARE) && (alu_wait || alu_wait_2)) begin
 					alu_wait <= alu_wait_2;
 				end else
-				if (is_beq_bne_blt_bge_bltu_bgeu) begin
+				if (is_beq_bne_blt_bge_bltu_bgeu[exec_hart]) begin
 					latched_rd[exec_hart] <= 0;
 					latched_store[exec_hart] <= TWO_CYCLE_COMPARE ? alu_out_0_q[exec_hart] : alu_out_0[exec_hart];
 					latched_branch[exec_hart] <= TWO_CYCLE_COMPARE ? alu_out_0_q[exec_hart] : alu_out_0[exec_hart];
 					hart_ready[exec_hart] = cpu_state_fetch;
 					exec_hart = no_hart;
-				end else if (is_csrrs) begin
+				end else if (is_csrrs[exec_hart]) begin
 					reg_out[exec_hart] <= exec_hart;
 					latched_store[exec_hart] <= 1;
 					hart_ready[exec_hart] = cpu_state_fetch;
 					exec_hart = no_hart;
 				end else begin
-					latched_branch[exec_hart] <= instr_jalr;
+					latched_branch[exec_hart] <= instr_jalr[exec_hart];
 					latched_store[exec_hart] <= 1;
 					latched_stalu[exec_hart] <= 1;
 					hart_ready[exec_hart] = cpu_state_fetch;
@@ -1329,17 +1348,17 @@ module picorv32 #(
 				end else if (TWO_STAGE_SHIFT && reg_sh[shift_hart] >= 4) begin
 					(* parallel_case, full_case *)
 					case (1'b1)
-						instr_slli || instr_sll: reg_op1[shift_hart] <= reg_op1[shift_hart] << 4;
-						instr_srli || instr_srl: reg_op1[shift_hart] <= reg_op1[shift_hart] >> 4;
-						instr_srai || instr_sra: reg_op1[shift_hart] <= $signed(reg_op1[shift_hart]) >>> 4;
+						instr_slli[shift_hart] || instr_sll[shift_hart]: reg_op1[shift_hart] <= reg_op1[shift_hart] << 4;
+						instr_srli[shift_hart] || instr_srl[shift_hart]: reg_op1[shift_hart] <= reg_op1[shift_hart] >> 4;
+						instr_srai[shift_hart] || instr_sra[shift_hart]: reg_op1[shift_hart] <= $signed(reg_op1[shift_hart]) >>> 4;
 					endcase
 					reg_sh[shift_hart] <= reg_sh[shift_hart] - 4;
 				end else begin
 					(* parallel_case, full_case *)
 					case (1'b1)
-						instr_slli || instr_sll: reg_op1[shift_hart] <= reg_op1[shift_hart] << 1;
-						instr_srli || instr_srl: reg_op1[shift_hart] <= reg_op1[shift_hart] >> 1;
-						instr_srai || instr_sra: reg_op1[shift_hart] <= $signed(reg_op1[shift_hart]) >>> 1;
+						instr_slli[shift_hart] || instr_sll[shift_hart]: reg_op1[shift_hart] <= reg_op1[shift_hart] << 1;
+						instr_srli[shift_hart] || instr_srl[shift_hart]: reg_op1[shift_hart] <= reg_op1[shift_hart] >> 1;
+						instr_srai[shift_hart] || instr_sra[shift_hart]: reg_op1[shift_hart] <= $signed(reg_op1[shift_hart]) >>> 1;
 					endcase
 					reg_sh[shift_hart] <= reg_sh[shift_hart] - 1;
 				end
@@ -1351,9 +1370,9 @@ module picorv32 #(
 				if (!mem_do_wdata) begin
 					(* parallel_case, full_case *)
 					case (1'b1)
-						instr_sb: mem_wordsize <= 2;
-						instr_sh: mem_wordsize <= 1;
-						instr_sw: mem_wordsize <= 0;
+						instr_sb[stmem_hart]: mem_wordsize <= 2;
+						instr_sh[stmem_hart]: mem_wordsize <= 1;
+						instr_sw[stmem_hart]: mem_wordsize <= 0;
 					endcase
 					if (ENABLE_TRACE) begin
 						trace_valid <= 1;
@@ -1373,13 +1392,13 @@ module picorv32 #(
 				if (!mem_do_rdata) begin
 					(* parallel_case, full_case *)
 					case (1'b1)
-						instr_lb || instr_lbu: mem_wordsize <= 2;
-						instr_lh || instr_lhu: mem_wordsize <= 1;
-						instr_lw: mem_wordsize <= 0;
+						instr_lb[ldmem_hart] || instr_lbu[ldmem_hart]: mem_wordsize <= 2;
+						instr_lh[ldmem_hart] || instr_lhu[ldmem_hart]: mem_wordsize <= 1;
+						instr_lw[ldmem_hart]: mem_wordsize <= 0;
 					endcase
-					latched_is_lu[ldmem_hart] <= is_lbu_lhu_lw;
-					latched_is_lh[ldmem_hart] <= instr_lh;
-					latched_is_lb[ldmem_hart] <= instr_lb;
+					latched_is_lu[ldmem_hart] <= is_lbu_lhu_lw[ldmem_hart];
+					latched_is_lh[ldmem_hart] <= instr_lh[ldmem_hart];
+					latched_is_lb[ldmem_hart] <= instr_lb[ldmem_hart];
 					if (ENABLE_TRACE) begin
 						trace_valid <= 1;
 						trace_data <= (irq_active ? TRACE_IRQ : 0) | TRACE_ADDR | ((reg_op1[ldmem_hart] + decoded_imm[ldmem_hart]) & 32'hffffffff);
@@ -1506,7 +1525,7 @@ module picorv32 #(
 		end
 		*/
 
-		if (!CATCH_ILLINSN && decoder_trigger_q && !decoder_pseudo_trigger_q && instr_ecall_ebreak) begin
+		if (!CATCH_ILLINSN && decoder_trigger_q && instr_ecall_ebreak) begin
 			for (k = 0; k < THREADS; k = k + 1) begin
 				hart_ready[k] = cpu_state_trap;
 			end
@@ -1556,11 +1575,11 @@ module picorv32 #(
 		rvfi_order <= resetn ? rvfi_order + rvfi_valid : 0;
 
 		rvfi_insn <= dbg_insn_opcode;
-		rvfi_rs1_addr <= dbg_rs1val_valid ? dbg_insn_rs1 : 0;
-		rvfi_rs2_addr <= dbg_rs2val_valid ? dbg_insn_rs2 : 0;
+		//rvfi_rs1_addr <= dbg_rs1val_valid ? dbg_insn_rs1 : 0;
+		//rvfi_rs2_addr <= dbg_rs2val_valid ? dbg_insn_rs2 : 0;
 		rvfi_pc_rdata <= dbg_insn_addr;
-		rvfi_rs1_rdata <= dbg_rs1val_valid ? dbg_rs1val : 0;
-		rvfi_rs2_rdata <= dbg_rs2val_valid ? dbg_rs2val : 0;
+		//rvfi_rs1_rdata <= dbg_rs1val_valid ? dbg_rs1val : 0;
+		//rvfi_rs2_rdata <= dbg_rs2val_valid ? dbg_rs2val : 0;
 		rvfi_trap <= trap;
 		rvfi_halt <= trap;
 		rvfi_intr <= dbg_irq_enter;
