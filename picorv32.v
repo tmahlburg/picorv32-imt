@@ -169,7 +169,6 @@ module picorv32 #(
 	reg [31:0] reg_out [0:THREADS-1];
 	reg [4:0] reg_sh [0:THREADS-1];
 
-	reg [31:0] next_insn_opcode;
 	reg [31:0] dbg_insn_opcode;
 	reg [31:0] dbg_insn_addr;
 
@@ -363,43 +362,32 @@ module picorv32 #(
 	end
 
 	// instruction memory interface
-	reg [1:0] instr_state;
-	reg [31:0] instr_rdata_word;
+
+	reg instr_state;
 	reg [31:0] instr_rdata_q;
 	reg instr_do_rinst;
 
 	reg [31:0] instr_addr_q;
 
-	wire instr_xfer;
+	wire instr_xfer = instr_valid && instr_ready;
 
-	wire [31:0] instr_rdata_latched;
-
-	assign instr_xfer = instr_valid && instr_ready;
-
-	wire instr_busy = instr_do_rinst;
-	wire instr_done = resetn && (instr_xfer && |instr_state && instr_do_rinst);
+	wire instr_done = resetn && instr_xfer && instr_state && instr_do_rinst;
 
 	assign instr_valid = instr_do_rinst;
 
-	assign instr_rdata_latched = (instr_xfer || LATCHED_MEM_RDATA) ? instr_rdata : instr_rdata_q;
+	wire [31:0] instr_rdata_latched = (instr_xfer || LATCHED_MEM_RDATA) ? instr_rdata : instr_rdata_q;
 
 	assign instr_addr = fetch_hart != no_hart ? {next_pc[fetch_hart][31:2], 2'b00} : instr_addr_q;
 
-	always @* begin
-		instr_rdata_word = instr_rdata;
-	end
-
 	always @(posedge clk) begin
-		if (instr_xfer) begin
+		if (instr_xfer)
 			instr_rdata_q <= instr_rdata;
-			next_insn_opcode <= instr_rdata;
-		end
 	end
 
 	always @(posedge clk) begin
 		if (!resetn || trap) begin
 			if (!resetn)
-				instr_state <= 0;
+                    instr_state <= 0;
 		end else begin
 			instr_addr_q <= instr_addr;
 			case (instr_state)
