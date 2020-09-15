@@ -2,7 +2,11 @@
 PicoRV32-imt - A Size-Optimized RISC-V CPU extended with IMT
 ============================================================
 
-PicoRV32-imt is a CPU core based on Claire Wolf's [PicoRV32](https://github.com/cliffordwolf/picorv32) and implementing IMT with two threads. To simplify the implementation of interleaved multithreading in this core, some features of the source have been dropped (for now). This core just implements the [RISC-V RV32I Instruction Set](http://riscv.org/). The interrupt controller of the original is still there but yet to be tested. This CPU has not yet successfully run on real hardware, but it works well in simulation.
+PicoRV32-imt is a CPU core based on Claire Wolf's [PicoRV32](https://github.com/cliffordwolf/picorv32) and 
+implementing IMT with up to six threads. To simplify the implementation of interleaved multithreading in this core,
+some features of the source have been dropped (for now). This core just implements the 
+[RISC-V RV32I Instruction Set](http://riscv.org/). The interrupt controller of the original is still there 
+but yet to be tested. This CPU has not yet successfully run on real hardware, but it works well in simulation.
 
 Tools (gcc, binutils, etc..) can be obtained via the [RISC-V Website](https://riscv.org/software-status/).
 The examples bundled with PicoRV32-imt expect various RV32 toolchains to be installed in `/opt/riscv32i`. See
@@ -13,62 +17,12 @@ PicoRV32-imt is free and open hardware licensed under the [ISC license](http://e
 
 #### Table of Contents
 
-- [Features and Typical Applications](#features-and-typical-applications)
 - [Files in this Repository](#files-in-this-repository)
 - [Verilog Module Parameters](#verilog-module-parameters)
-- [Cycles per Instruction Performance](#cycles-per-instruction-performance)
 - [PicoRV32 Native Memory Interface](#picorv32-native-memory-interface)
 - [Custom Instructions for IRQ Handling](#custom-instructions-for-irq-handling)
 - [Building a pure RV32I Toolchain](#building-a-pure-rv32i-toolchain)
 - [Linking binaries with newlib for PicoRV32](#linking-binaries-with-newlib-for-picorv32)
-
-Features and Typical Applications
----------------------------------
-
-- Small (750-2000 LUTs in 7-Series Xilinx Architecture)
-- High f<sub>max</sub> (250-450 MHz on 7-Series Xilinx FPGAs)
-- Selectable native memory interface or AXI4-Lite master
-- Optional IRQ support (using a simple custom ISA)
-- Optional Co-Processor Interface
-
-This CPU is meant to be used as auxiliary processor in FPGA designs and ASICs. Due
-to its high f<sub>max</sub> it can be integrated in most existing designs without crossing
-clock domains. When operated on a lower frequency, it will have a lot of timing
-slack and thus can be added to a design without compromising timing closure.
-
-For even smaller size it is possible disable support for registers `x16`..`x31` as
-well as `RDCYCLE[H]`, `RDTIME[H]`, and `RDINSTRET[H]` instructions, turning the
-processor into an RV32E core.
-
-Furthermore it is possible to choose between a dual-port and a single-port
-register file implementation. The former provides better performance while
-the latter results in a smaller core.
-
-*Note: In architectures that implement the register file in dedicated memory
-resources, such as many FPGAs, disabling the 16 upper registers and/or
-disabling the dual-port register file may not further reduce the core size.*
-
-The core exists in three variations: `picorv32`, `picorv32_axi` and `picorv32_wb`.
-The first provides a simple native memory interface, that is easy to use in simple
-environments. `picorv32_axi` provides an AXI-4 Lite Master interface that can
-easily be integrated with existing systems that are already using the AXI
-standard. `picorv32_wb` provides a Wishbone master interface.
-
-A separate core `picorv32_axi_adapter` is provided to bridge between the native
-memory interface and AXI4. This core can be used to create custom cores that
-include one or more PicoRV32 cores together with local RAM, ROM, and
-memory-mapped peripherals, communicating with each other using the native
-interface, and communicating with the outside world via AXI4.
-
-The optional IRQ feature can be used to react to events from the outside, implement
-fault handlers, or catch instructions from a larger ISA and emulate them in
-software.
-
-The optional Pico Co-Processor Interface (PCPI) can be used to implement
-non-branching instructions in an external coprocessor. Implementations
-of PCPI cores that implement the M Standard Extension instructions
-`MUL[H[SU|U]]` and `DIV[U]/REM[U]` are included in this package.
-
 
 Files in this Repository
 ------------------------
@@ -87,40 +41,16 @@ This Verilog file contains the following Verilog modules:
 
 Simply copy this file into your project.
 
-#### Makefile and testbenches
-
-A basic test environment. Run `make test` to run the standard test bench (`testbench.v`)
-in the standard configurations. There are other test benches and configurations. See
-the `test_*` make target in the Makefile for details.
-
-Run `make test_ez` to run `testbench_ez.v`, a very simple test bench that does
-not require an external firmware .hex file. This can be useful in environments
-where the RISC-V compiler toolchain is not available.
-
-*Note: The test bench is using Icarus Verilog. However, Icarus Verilog 0.9.7
-(the latest release at the time of writing) has a few bugs that prevent the
-test bench from running. Upgrade to the latest github master of Icarus Verilog
-to run the test bench.*
-
 #### firmware/
 
 A simple test firmware. This runs the basic tests from `tests/`, some C code, tests IRQ
-handling and the multiply PCPI core.
+handling and the multiply PCPI core. Most of these are untested or unsupported right now.
 
 All the code in `firmware/` is in the public domain. Simply copy whatever you can use.
 
 #### tests/
 
 Simple instruction-level tests from [riscv-tests](https://github.com/riscv/riscv-tests).
-
-#### dhrystone/
-
-Another simple test firmware that runs the Dhrystone benchmark.
-
-#### picosoc/
-
-A simple example SoC using PicoRV32-imt that can execute code directly from a
-memory mapped SPI flash.
 
 ### picoramsoc/
 
@@ -129,6 +59,7 @@ A simple example SoC using PicoRV32-imt that can execute code from RAM via a mem
 #### scripts/
 
 Various scripts and examples for different (synthesis) tools and hardware architectures.
+Most of these are untested.
 
 
 Verilog Module Parameters
@@ -148,17 +79,15 @@ instructions are not optional for an RV32I core. But chances are they are not
 going to be missed after the application code has been debugged and profiled.
 This instructions are optional for an RV32E core.*
 
+This is untested.
+
 #### ENABLE_COUNTERS64 (default = 1)
 
 This parameter enables support for the `RDCYCLEH`, `RDTIMEH`, and `RDINSTRETH`
 instructions. If this parameter is set to 0, and `ENABLE_COUNTERS` is set to 1,
 then only the `RDCYCLE`, `RDTIME`, and `RDINSTRET` instructions are available.
 
-#### ENABLE_REGS_DUALPORT (default = 1)
-
-The register file can be implemented with two or one read ports. A dual ported
-register file improves performance a bit, but can also increase the size of
-the core.
+This is untested.
 
 #### LATCHED_MEM_RDATA (default = 0)
 
@@ -167,14 +96,18 @@ transaction. In the default configuration the PicoRV32 core only expects the
 `mem_rdata` input to be valid in the cycle with `mem_valid && mem_ready` and
 latches the value internally.
 
-#### TWO_STAGE_SHIFT (default = 1)
+This is untested, but should work without much problems.
+
+#### TWO_STAGE_SHIFT (default = 0)
 
 By default shift operations are performed in two stages: first shifts in units
 of 4 bits and then shifts in units of 1 bit. This speeds up shift operations,
 but adds additional hardware. Set this parameter to 0 to disable the two-stage
 shift to further reduce the size of the core.
 
-#### BARREL_SHIFTER (default = 0)
+This is unsupported for now.
+
+#### BARREL_SHIFTER (default = 1)
 
 By default shift operations are performed by successively shifting by a
 small amount (see `TWO_STAGE_SHIFT` above). With this option set, a barrel
@@ -189,6 +122,8 @@ branch instructions.
 *Note: Enabling this parameter will be most effective when retiming (aka
 "register balancing") is enabled in the synthesis flow.*
 
+This is unsupported for now.
+
 #### TWO_CYCLE_ALU (default = 0)
 
 This adds an additional FF stage in the ALU data path, improving timing
@@ -198,10 +133,14 @@ the ALU.
 *Note: Enabling this parameter will be most effective when retiming (aka
 "register balancing") is enabled in the synthesis flow.*
 
+This is unsupported for now.
+
 #### CATCH_MISALIGN (default = 1)
 
 Set this to 0 to disable the circuitry for catching misaligned memory
 accesses.
+
+This is unsupported for now.
 
 #### CATCH_ILLINSN (default = 1)
 
@@ -217,7 +156,9 @@ triggering an interrupt.
 Set this to 1 to enable IRQs. (see "Custom Instructions for IRQ Handling" below
 for a discussion of IRQs)
 
-#### ENABLE_IRQ_QREGS (default = 1)
+This is unsupported for now.
+
+#### ENABLE_IRQ_QREGS (default = 0)
 
 Set this to 0 to disable support for the `getq` and `setq` instructions. Without
 the q-registers, the irq return address will be stored in x3 (gp) and the IRQ
@@ -227,11 +168,15 @@ those registers.
 
 Support for q-registers is always disabled when ENABLE_IRQ is set to 0.
 
-#### ENABLE_IRQ_TIMER (default = 1)
+This is unsupported for now.
+
+#### ENABLE_IRQ_TIMER (default = 0)
 
 Set this to 0 to disable support for the `timer` instruction.
 
 Support for the timer is always disabled when ENABLE_IRQ is set to 0.
+
+This is unsupported for now.
 
 #### ENABLE_TRACE (default = 0)
 
@@ -245,9 +190,13 @@ it.
 Set this to 1 to initialize all registers to zero (using a Verilog `initial` block).
 This can be useful for simulation or formal verification.
 
+This is unsupported for now.
+
 #### MASKED_IRQ (default = 32'h 0000_0000)
 
 A 1 bit in this bitmask corresponds to a permanently disabled IRQ.
+
+This is unsupported for now.
 
 #### LATCHED_IRQ (default = 32'h ffff_ffff)
 
@@ -259,6 +208,8 @@ interrupts" or "edge-triggered interrupts").
 Set a bit in this bitmask to 0 to convert an interrupt line to operate
 as "level sensitive" interrupt.
 
+This is unsupported for now.
+
 #### PROGADDR_RESET (default = 32'h 0000_0000)
 
 The start address of the program.
@@ -267,6 +218,8 @@ The start address of the program.
 
 The start address of the interrupt handler.
 
+This is unsupported for now.
+
 #### STACKADDR (default = 32'h ffff_ffff)
 
 When this parameter has a value different from 0xffffffff, then register `x2` (the
@@ -274,41 +227,6 @@ stack pointer) is initialized to this value on reset. (All other registers remai
 uninitialized.) Note that the RISC-V calling convention requires the stack pointer
 to be aligned on 16 bytes boundaries (4 bytes for the RV32I soft float calling
 convention).
-
-
-Cycles per Instruction Performance
-----------------------------------
-
-*A short reminder: This core is optimized for size and f<sub>max</sub>, not performance.*
-
-Unless stated otherwise, the following numbers apply to a PicoRV32-imt with
-ENABLE_REGS_DUALPORT active and connected to a memory that can accommodate
-requests within one clock cycle.
-
-The average Cycles per Instruction (CPI) is approximately 4, depending on the mix of
-instructions in the code. The CPI numbers for the individual instructions can
-be found in the table below. The column "CPI (SP)" contains the CPI numbers for
-a core built without ENABLE_REGS_DUALPORT.
-
-| Instruction          |  CPI | CPI (SP) |
-| ---------------------| ----:| --------:|
-| direct jump (jal)    |    3 |        3 |
-| ALU reg + immediate  |    3 |        3 |
-| ALU reg + reg        |    3 |        4 |
-| branch (not taken)   |    3 |        4 |
-| memory load          |    5 |        5 |
-| memory store         |    5 |        6 |
-| branch (taken)       |    5 |        6 |
-| indirect jump (jalr) |    6 |        6 |
-| shift operations     | 4-14 |     4-15 |
-
-Dhrystone benchmark results: 0.516 DMIPS/MHz (908 Dhrystones/Second/MHz)
-
-For the Dhrystone benchmark the average CPI is 4.100.
-
-Without using the look-ahead memory interface (usually required for max
-clock speed), this results drop to 0.305 DMIPS/MHz and 5.232 CPI.
-
 
 PicoRV32 Native Memory Interface
 --------------------------------
