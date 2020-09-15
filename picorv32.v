@@ -328,7 +328,6 @@ module picorv32 #(
 					end
 					if (mem_do_wdata) begin
 						mem_valid <= 1;
-						mem_instr <= 0;
 						mem_state <= 2;
 					end
 				end
