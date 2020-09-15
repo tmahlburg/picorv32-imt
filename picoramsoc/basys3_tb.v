@@ -1,7 +1,8 @@
 /*
  *  PicoRAMSoC - A simple example SoC using PicoRV32-imt
  *
- *  Copyright (C) 2017  Till Mahlburg
+ *  Copyright (C) 2017  Clifford Wolf <clifford@clifford.at>
+ *  Copyright (C) 2020  Till Mahlburg
  *
  *  Permission to use, copy, modify, and/or distribute this software for any
  *  purpose with or without fee is hereby granted, provided that the above

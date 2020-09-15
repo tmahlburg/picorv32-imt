@@ -1,6 +1,7 @@
 /*
  *  PicoRV32-imt -- A Small RISC-V (RV32I) Processor Core extended with Interleaved Multithreading
  *
+ *  Copyright (C) 2015  Clifford Wolf <clifford@clifford.at>
  *  Copyright (C) 2020  Till Mahlburg
  *
  *  Permission to use, copy, modify, and/or distribute this software for any
