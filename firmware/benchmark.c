@@ -16,28 +16,18 @@
  */
 
 #include <stdint.h>
-// #include "benchmark_data.h"
+#include "benchmark_data.h"
 
 #define reg_leds (*(volatile uint32_t*)0x03000000)
 #define reg_uart_clkdiv (*(volatile uint32_t*)0x02000004)
 #define reg_uart_data (*(volatile uint32_t*)0x02000008)
 
 #define THREADS 6
-#define DIM 6
-
-int matrix[] = {4, 6, 7, 6, 7, 7,
-				1, 2, 4, 4, 1, 7,
-				9, 7, 4, 4, 2, 1,
-				1, 9, 3, 8, 7, 5,
-				8, 6, 0, 7, 1, 1,
-				6, 7, 5, 7, 3, 7};
-int vector[] = {7, 5, 1, 2, 1, 8};
-
-int result_vector[DIM];
 
 // define runtime variables, so they have different memory adresses
 int i, j, k, l, m, n, o;
 
+int result_vector[DIM];
 int done[THREADS];
 
 void putchar(char c)
