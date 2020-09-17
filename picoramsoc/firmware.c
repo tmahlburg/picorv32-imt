@@ -1,6 +1,7 @@
 /*
- *  PicoSoC - A simple example SoC using PicoRV32
+ *  PicoRAMSoC - A simple example SoC using PicoRV32
  *
+ *  Copyright (C) 2020  Till Mahlburg
  *  Copyright (C) 2017  Clifford Wolf <clifford@clifford.at>
  *
  *  Permission to use, copy, modify, and/or distribute this software for any
