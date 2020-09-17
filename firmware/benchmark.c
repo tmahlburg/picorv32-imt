@@ -25,8 +25,9 @@
 
 #define THREADS 6
 
-// define runtime variables, so they have different memory adresses
+// define runtime variables, so they are guaranteed to have different memory adresses
 int i, j, k, l, m, n, o;
+int a, b, c, d, e, f, g;
 
 int result_vector[DIM];
 int done[THREADS];
@@ -120,17 +121,26 @@ int main()
 
     __asm__(".THREAD_0:\n\t");
 	done[0] = 0;
-	result_vector[0] = 0;
-    for (i = 0; i < DIM; i++) {
-	    result_vector[0] += matrix[i] * vector[i];
-    }
+	for (a = 0; a < DIM; a += THREADS) {
+		result_vector[a] = 0;
+	    for (i = 0; i < DIM; i++) {
+		    // matrix[i+a*DIM] = A_a_i
+		    result_vector[a] += matrix[i+a*DIM] * vector[i];
+	    }
+	}
 	done[0] = 1;
 	// print result vector, if all threads are done
-    while (!done[1] || !done[2] || !done[3] || !done[4] || !done[5]) {
+	int all_done = 0;
+	int o;
+    while (all_done != THREADS) {
+		all_done = 0;
+		for (o = 0; o < THREADS; o++) {
+		    if (done[o])
+			    all_done++;
+	    }
 	    __asm__("nop\n\t");
     }
 
-	int o;
 	reg_leds = 0xfff;
 	reg_uart_clkdiv = 86;
 	for (o = 0; o < DIM; o++) {
@@ -142,46 +152,56 @@ int main()
 
     __asm__(".THREAD_1:\n\t");
 	done[1] = 0;
-	result_vector[1] = 0;
-    for (j = 0; j < DIM; j++) {
-	    result_vector[1] += matrix[j+DIM] * vector[j];
-    }
+	for (b = 1; b < DIM; b += THREADS) {
+		result_vector[b] = 0;
+	    for (j = 0; j < DIM; j++) {
+		    result_vector[b] += matrix[j+b*DIM] * vector[j];
+	    }
+	}
     done[1] = 1;
     __asm__("j .DONE\n");
 
     __asm__(".THREAD_2:\n\t");
 	done[2] = 0;
-	result_vector[2] = 0;
-    for (k = 0; k < DIM; k++) {
-		result_vector[2] += matrix[k+DIM*2] * vector[k];
-    }
+	for (c = 2; c < DIM; c += THREADS) {
+		result_vector[c] = 0;
+	    for (k = 0; k < DIM; k++) {
+		    result_vector[c] += matrix[k+c*DIM] * vector[k];
+	    }
+	}
     done[2] = 1;
     __asm__("j .DONE\n");
 
     __asm__(".THREAD_3:\n\t");
 	done[3] = 0;
-	result_vector[3] = 0;
-    for (l = 0; l < DIM; l++) {
-	    result_vector[3] += matrix[l+DIM*3] * vector[l];
-    }
+	for (d = 3; d < DIM; d += THREADS) {
+		result_vector[d] = 0;
+	    for (l = 0; l < DIM; l++) {
+		    result_vector[d] += matrix[l+d*DIM] * vector[l];
+	    }
+	}
     done[3] = 1;
     __asm__("j .DONE\n");
 
     __asm__(".THREAD_4:\n\t");
 	done[4] = 0;
-	result_vector[4] = 0;
-    for (m = 0; m < DIM; m++) {
-	    result_vector[4] += matrix[m+DIM*4] * vector[m];
-    }
+	for (e = 4; e < DIM; e += THREADS) {
+		result_vector[e] = 0;
+	    for (m = 0; m < DIM; m++) {
+		    result_vector[e] += matrix[m+e*DIM] * vector[m];
+	    }
+	}
     done[4] = 1;
     __asm__("j .DONE\n");
 
     __asm__(".THREAD_5:\n\t");
 	done[5] = 0;
-	result_vector[5] = 0;
-    for (n = 0; n < DIM; n++) {
-	    result_vector[5] += matrix[n+DIM*5] * vector[n];
-    }
+	for (f = 5; f < DIM; f += THREADS) {
+		result_vector[f] = 0;
+	    for (n = 0; n < DIM; n++) {
+		    result_vector[f] += matrix[n+f*DIM] * vector[n];
+	    }
+	}
     done[5] = 1;
 
     __asm__(".DONE:\n\t");
