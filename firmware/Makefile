@@ -20,3 +20,11 @@ basys3_benchmark.hex: basys3_benchmark.elf
 
 basys3_benchmark.s: benchmark.c
 	$(CROSS)gcc $(CFLAGS) -S -march=rv32i -nostdlib -nostartfiles -ffreestanding  -c benchmark.c -o basys3_benchmark.s
+
+basys3_benchmark_single.elf: ../picoramsoc/basys3_sections.lds start.o benchmark_single.c benchmark_data.o
+	$(CROSS)gcc $(CFLAGS) -march=rv32i -nostdlib -nostartfiles -ffreestanding  -c benchmark_single.c -o benchmark_single.o
+	$(CROSS)gcc $(CFLAGS) -march=rv32i -nostdlib -nostartfiles -ffreestanding  -Xlinker -T -Xlinker ../picoramsoc/basys3_sections.lds start.o benchmark_single.o benchmark_data.o -lgcc -o basys3_benchmark_single.elf
+
+basys3_benchmark_single.hex: basys3_benchmark_single.elf
+	$(CROSS)objcopy -O verilog basys3_benchmark_single.elf basys3_benchmark_single.hex
+	$(FMT_HEX_CMD) basys3_benchmark_single.hex
