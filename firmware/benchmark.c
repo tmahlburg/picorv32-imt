@@ -39,10 +39,20 @@ void putchar(char c)
 
 void print_dec(uint32_t v)
 {
-	if (v >= 1000) {
+	if (v >= 10000) {
 		putchar('e');
 		return;
 	}
+
+	if      (v >= 9000) { putchar('9'); v -= 9000; }
+	else if (v >= 8000) { putchar('8'); v -= 8000; }
+	else if (v >= 7000) { putchar('7'); v -= 7000; }
+	else if (v >= 6000) { putchar('6'); v -= 6000; }
+	else if (v >= 5000) { putchar('5'); v -= 5000; }
+	else if (v >= 4000) { putchar('4'); v -= 4000; }
+	else if (v >= 3000) { putchar('3'); v -= 3000; }
+	else if (v >= 2000) { putchar('2'); v -= 2000; }
+	else if (v >= 1000) { putchar('1'); v -= 1000; }
 
 	if      (v >= 900) { putchar('9'); v -= 900; }
 	else if (v >= 800) { putchar('8'); v -= 800; }
@@ -53,6 +63,7 @@ void print_dec(uint32_t v)
 	else if (v >= 300) { putchar('3'); v -= 300; }
 	else if (v >= 200) { putchar('2'); v -= 200; }
 	else if (v >= 100) { putchar('1'); v -= 100; }
+	else putchar('0');
 
 	if      (v >= 90) { putchar('9'); v -= 90; }
 	else if (v >= 80) { putchar('8'); v -= 80; }
