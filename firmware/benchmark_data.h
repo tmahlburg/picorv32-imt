@@ -1,7 +1,7 @@
 #ifndef BENCHMARK_DATA_H
 #define BENCHMARK_DATA_H
 
-#define DIM 6
+#define DIM 30
 
 extern int matrix[DIM*DIM];
 extern int vector[DIM];
