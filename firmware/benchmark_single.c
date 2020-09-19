@@ -23,6 +23,8 @@
 #define reg_uart_clkdiv (*(volatile uint32_t*)0x02000004)
 #define reg_uart_data (*(volatile uint32_t*)0x02000008)
 
+#define send_threads_to_sleep
+
 void putchar(char c)
 {
 	if (c == '\n')
@@ -83,6 +85,16 @@ void print_dec(uint32_t v)
 
 int main()
 {
+#ifdef send_threads_to_sleep
+    int done = 0;
+    // Threadswitch
+    __asm__("csrr t0, 0xF14\n\t" // load current thread id into register t0
+            "bnez t0, .ID_NEQ_0\n\t"// check if hart id != 0
+            "j .THREAD_0\n" // if not, jump to .THREAD_0 label
+            ".ID_NEQ_0:\n\t" // else
+            "j .DONE\n" // jump to nop loop
+            ".THREAD_0:\n\t");
+#endif //send_threads_to_sleep
 	int result_vector[DIM];
 	for (int i = 0; i < DIM; i++) {
 		result_vector[i] = 0;
@@ -98,5 +110,12 @@ int main()
 		putchar(' ');
 	}
 	putchar(' ');*/
+#ifdef send_threads_to_sleep
+    done = 1;
+    __asm__(".DONE:\n\t");
+    while (done != 1) {
+        __asm("nop\n\t");
+    }
+#endif //send_threads_to_sleep
 	return 0;
 }
