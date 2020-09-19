@@ -28,3 +28,6 @@ basys3_benchmark_single.elf: ../picoramsoc/basys3_sections.lds start.o benchmark
 basys3_benchmark_single.hex: basys3_benchmark_single.elf
 	$(CROSS)objcopy -O verilog basys3_benchmark_single.elf basys3_benchmark_single.hex
 	$(FMT_HEX_CMD) basys3_benchmark_single.hex
+
+clean:
+	rm start.o benchmark_data.o basys3_benchmark.elf basys3_benchmark.hex basys3_benchmark.s basys3_benchmark_single.elf basys3_benchmark_single.hex
