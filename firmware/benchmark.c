@@ -128,13 +128,12 @@ int main()
 		    result_vector[a] += matrix[i+a*DIM] * vector[i];
 	    }
 	}
-	done[0] = 1;
 	// print result vector, if all threads are done
-	int all_done = 0;
 	int o;
-    while (all_done != THREADS) {
+	int all_done = 0;
+    while (all_done != THREADS-1) {
 		all_done = 0;
-		for (o = 0; o < THREADS; o++) {
+		for (o = 1; o < THREADS; o++) {
 		    if (done[o])
 			    all_done++;
 	    }
@@ -142,12 +141,13 @@ int main()
     }
 
 	reg_leds = 0xfff;
-	reg_uart_clkdiv = 86;
+/*	reg_uart_clkdiv = 86;
 	for (o = 0; o < DIM; o++) {
 		print_dec(result_vector[o]);
 		putchar(' ');
 	}
-	putchar(' ');
+	putchar(' ');*/
+	done[0] = 1;
     __asm__("j .DONE\n");
 
     __asm__(".THREAD_1:\n\t");
@@ -205,7 +205,7 @@ int main()
     done[5] = 1;
 
     __asm__(".DONE:\n\t");
-	while (1) {
+	while (!done[0]) {
 		__asm__("nop\n\t");
 	}
     return 0;
