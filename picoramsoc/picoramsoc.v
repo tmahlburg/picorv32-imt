@@ -183,7 +183,7 @@ module picoramsoc_mem #(
 	reg [31:0] mem [0:WORDS-1];
 
 	initial
-		$readmemh("basys3_fw.hex", mem);
+		$readmemh("firmware.hex", mem);
 
 	always @(posedge clk) begin
 	    rdata1 <= mem[addr1];
