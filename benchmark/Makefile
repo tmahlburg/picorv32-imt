@@ -1,5 +1,5 @@
 CROSS=riscv32-unknown-elf-
-FMT_HEX_CMD=../picoramsoc/fmt_hex.py
+FMT_HEX_CMD=../scripts/fmt_hex.py
 CFLAGS=-Wall -Wextra
 
 # ---- BASYS 3 Board ----
