@@ -33,7 +33,7 @@ module basys3_tb;
        $dumpfile("basys3_tb.vcd");
        $dumpvars(0, basys3_tb);
 
-       repeat (25)
+       repeat (1000)
        begin
            repeat (50000) @(posedge clk);
            $display("+50000 cycles");
