@@ -21,12 +21,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#ifdef BASYS3
-#  define MEM_TOTAL 0x4000 /* 16 KB */
-#else
-#  error "Set -DBASYS3 when compiling firmware.c"
-#endif
-
 // a pointer to this is a null pointer, but the compiler does not
 // know that because "sram" is a linker symbol from sections.lds.
 extern uint32_t sram;
@@ -165,19 +159,19 @@ void main()
             "j .THREAD_2\n\t"
             ".ID_NEQ2:\n"
             "j .DONE\n");
-    
+
     __asm__(".THREAD_0:\n\t");
 
     reg_uart_clkdiv = 86;
     reg_leds = 0;
-    
+
     print("running thread 0");
 
     lock1 = 0;
     __asm__("j .DONE\n");
-    
+
     __asm__(".THREAD_1:\n\t");
-    
+
     int counter_1 = 0;
     while (lock1 != 0) {
         counter_1++;
@@ -186,21 +180,20 @@ void main()
     reg_leds = 1;
     print("running thread 1");
     lock2 = 0;
-    
+
     __asm__("j .DONE\n");
 
-        
     __asm(".THREAD_2:\n\t");
-    
+
     int counter_2 = 0;
     while (lock2 != 0) {
         counter_2++;
     }
     print("running thread 2");
-    
+
     __asm__(".DONE:\n\t");
     print("work done");
-    
+
     while(1) {
         __asm__("nop\n\t");
     }
