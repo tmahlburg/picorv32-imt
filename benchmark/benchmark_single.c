@@ -23,6 +23,7 @@
 #define reg_uart_clkdiv (*(volatile uint32_t*)0x02000004)
 #define reg_uart_data (*(volatile uint32_t*)0x02000008)
 
+// UNDEFINE THIS TO RUN A PURE SINGLE THREAD VERSION OF THIS PROGRAM
 #define send_threads_to_sleep
 
 void putchar(char c)
