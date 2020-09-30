@@ -108,7 +108,7 @@ module picoramsoc(
 	        simpleuart_reg_div_sel ? simpleuart_reg_div_do :
 	        simpleuart_reg_dat_sel ? simpleuart_reg_dat_do : 32'h 0000_0000;
 
-	picorv32 #(
+	picorv32-imt #(
 	    .STACKADDR(STACKADDR),
 	    .PROGADDR_RESET(PROGADDR_RESET),
 	    .PROGADDR_IRQ(PROGADDR_IRQ),

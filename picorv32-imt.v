@@ -60,7 +60,7 @@
  * picorv32
  ***************************************************************/
 
-module picorv32 #(
+module picorv32-imt #(
 	parameter [ 0:0] ENABLE_COUNTERS = 1,
 	parameter [ 0:0] ENABLE_COUNTERS64 = 1,
 	parameter [ 0:0] ENABLE_REGS_DUALPORT = 1,
