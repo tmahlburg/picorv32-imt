@@ -1,10 +1,10 @@
 PicoRV32-imt - A Size-Optimized RISC-V CPU extended with IMT
 ============================================================
 
-PicoRV32-imt is a CPU core based on Claire Wolf's [PicoRV32](https://github.com/cliffordwolf/picorv32) and 
+PicoRV32-imt is a CPU core based on Claire Wolf's [PicoRV32](https://github.com/cliffordwolf/picorv32) and
 implementing IMT with up to six threads. To simplify the implementation of interleaved multithreading in this core,
-some features of the source have been dropped (for now). This core just implements the 
-[RISC-V RV32I Instruction Set](http://riscv.org/). The interrupt controller of the original is still there 
+some features of the source have been dropped (for now). This core just implements the
+[RISC-V RV32I Instruction Set](http://riscv.org/). The interrupt controller of the original is still there
 but yet to be tested. This CPU has not yet successfully run on real hardware, but it works well in simulation.
 
 Tools (gcc, binutils, etc..) can be obtained via the [RISC-V Website](https://riscv.org/software-status/).
@@ -34,7 +34,7 @@ This Verilog file contains the following Verilog modules:
 
 | Module                   | Description                                                           |
 | ------------------------ | --------------------------------------------------------------------- |
-| `picorv32`               | The PicoRV32-imt CPU                                                  |
+| `picorv32-imt`           | The PicoRV32-imt CPU                                                  |
 
 Simply copy this file into your project.
 
@@ -238,11 +238,11 @@ that can run one memory transfer and one instruction transfer at a time:
     output [31:0] mem_wdata
     output [ 3:0] mem_wstrb
     input  [31:0] mem_rdata
-    
+
     output        mem_instr
     output        instr_valid
     input         instr_ready
-    
+
     output [31:0] instr_addr
     input  [31:0] instr_rdata
 
