@@ -28,26 +28,17 @@ Files in this Repository
 
 You are reading it right now.
 
-#### picorv32.v
+#### picorv32-imt.v
 
-This Verilog file contains the following Verilog modules:
+This Verilog file contains the picorv32-imt Verilog. Simply copy this file into your project.
 
-| Module                   | Description                                                           |
-| ------------------------ | --------------------------------------------------------------------- |
-| `picorv32-imt`           | The PicoRV32-imt CPU                                                  |
+### Makefile
 
-Simply copy this file into your project.
+Automates installing the RISC-V toolchain. See below.
 
-#### firmware/
+### benchmarks/
 
-A simple test firmware. This runs the basic tests from `tests/`, some C code, tests IRQ
-handling and the multiply PCPI core. Most of these are untested or unsupported right now.
-
-All the code in `firmware/` is in the public domain. Simply copy whatever you can use.
-
-#### tests/
-
-Simple instruction-level tests from [riscv-tests](https://github.com/riscv/riscv-tests).
+This contains benchmarks to test performance and ressource usage (size).
 
 ### picoramsoc/
 
@@ -55,9 +46,7 @@ A simple example SoC using PicoRV32-imt that can execute code from RAM via a mem
 
 #### scripts/
 
-Various scripts and examples for different (synthesis) tools and hardware architectures.
-Most of these are untested.
-
+This contains helper scripts.
 
 Verilog Module Parameters
 -------------------------
